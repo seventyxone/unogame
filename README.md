@@ -1,73 +1,51 @@
-# React + TypeScript + Vite
+# UNO - Ultimate Multiplayer Experience
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A professional, feature-rich UNO game built with **React**, **TypeScript**, and **Socket.io**. This version includes competitive modes, tactical visualizations, and advanced rule configurations.
 
-Currently, two official plugins are available:
+## 🚀 Unique Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 🏆 Competitive Game Modes
+*   **Tournament Mode (LMS)**: Survive round after round! The player with the most cards at the end of each round is eliminated until only one remains.
+*   **Points Mode**: Compete for the lowest score across multiple rounds. Customize the `Max Rounds` to fit your playtime.
+*   **Standard Mode**: The classic UNO experience.
 
-## React Compiler
+### 🎮 Advanced Rule Toggles
+*   **Draw War (Stacking)**: Chain +2 and +4 cards to force opponents into massive card draws.
+*   **Multi-Play**: Play sequences of the same number (e.g., all your '7's) in a single turn.
+*   **Special Reverse**: In 2-player games, Reverse acts like a Skip.
+*   **Custom Deck Config**: Modify the exact count of every card type (0-9, Skip, Wild, etc.) in the deck.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 👁️ Tactical Visualization
+*   **Activity Stream**: Real-time turn history next to the play area showing exactly what cards were played and who took a Draw War hit.
+*   **Opponent Hand Graphics**: Beautifully fanned card backs for opponents, representing their actual hand size.
+*   **Selection Control**: Plan your sequence before playing, with the ability to cancel and retry.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🛠️ Technical Setup
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Backend (Server)
+*   **Technology**: Node.js, Express, Socket.io
+*   **Hosting Recommendation**: [Render.com](https://render.com) (Web Service)
+*   **Port**: Dynamically assigned via `process.env.PORT` (defaults to 3001)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Frontend (Client)
+*   **Technology**: React 19, Vite, Framer Motion, Lucide React
+*   **Hosting Recommendation**: [Render.com](https://render.com) (Static Site)
+*   **Environment**: Configure `VITE_SERVER_URL` in your `.env` to point to your backend.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## ⚡ Quick Start (Local)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1.  **Install Dependencies**:
+    ```bash
+    npm install
+    cd server
+    npm install
+    ```
+2.  **Start Services**:
+    *   **Frontend**: `npm run dev`
+    *   **Backend**: `node index.js` (inside `server/`)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Designed for the ultimate UNO showdown!
