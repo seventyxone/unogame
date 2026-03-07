@@ -78,25 +78,43 @@ const handleWin = (roomId, winner) => {
 const startGameInternal = (roomId) => {
     const room = rooms.get(roomId);
     const io = getIo();
-    if (!room || room.players.length < 2) return;
+    const playingCount = room.players.filter(p => !p.isSpectator).length;
+    if (playingCount < 2) return;
     room.status = 'playing';
     room.botIsThinking = false; // Reset lock to prevent deadlock bleeding across rounds
     room.deck = createDeck(room.rules);
     room.discardPile = [];
 
     // Determine First Player
-    if (room.currentRound === 1 || !room.lastWinnerId || room.rules?.firstTurnRule === 'host') {
-        room.currentPlayerIndex = room.players.findIndex(p => p.userId === room.hostUserId);
-    } else if (room.rules?.firstTurnRule === 'random') {
-        room.currentPlayerIndex = Math.floor(Math.random() * room.players.length);
-    } else if (room.rules?.firstTurnRule === 'winner') {
+    const rule = room.rules?.firstTurnRule || 'host';
+    let startIndex = 0;
+
+    if (rule === 'random') {
+        startIndex = Math.floor(Math.random() * room.players.length);
+        console.log(`[GAME] Start Rule: RANDOM. Chose index ${startIndex} (${room.players[startIndex]?.name})`);
+    } else if (rule === 'winner' && room.currentRound > 1 && room.lastWinnerId) {
         const winIdx = room.players.findIndex(p => p.userId === room.lastWinnerId);
-        room.currentPlayerIndex = winIdx !== -1 ? winIdx : 0;
+        startIndex = winIdx !== -1 ? winIdx : 0;
+        console.log(`[GAME] Start Rule: WINNER. Chose winner index ${startIndex} (${room.players[startIndex]?.name})`);
+    } else {
+        const hostIdx = room.players.findIndex(p => p.userId === room.hostUserId);
+        startIndex = hostIdx !== -1 ? hostIdx : 0;
+        console.log(`[GAME] Start Rule: HOST. Chose host index ${startIndex} (${room.players[startIndex]?.name})`);
     }
 
-    if (room.currentPlayerIndex === -1) room.currentPlayerIndex = 0;
+    // Crucial: Ensure the chosen starting player is actually playing (not eliminated/spectator)
+    let safety = 0;
+    const initialStart = startIndex;
+    while (room.players[startIndex].isSpectator && safety < room.players.length) {
+        startIndex = (startIndex + 1) % room.players.length;
+        safety++;
+    }
+    if (initialStart !== startIndex) {
+        console.log(`[GAME] Adjusted starting player from ${initialStart} to ${startIndex} because of spectator status.`);
+    }
+    room.currentPlayerIndex = startIndex;
 
-    room.direction = 1;
+    room.direction = room.rules?.startDirection ?? 1;
     room.pendingDrawCount = 0;
     room.lastAction = null;
     room.playHistory = [];

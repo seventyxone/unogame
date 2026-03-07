@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import UnoCard from './UnoCard';
 import { motion, AnimatePresence, LayoutGroup, Reorder } from 'framer-motion';
 
@@ -23,8 +23,13 @@ const MiniHand: React.FC<{ hand: any[], active?: boolean }> = ({ hand, active })
                 // Fan calculations
                 const total = animatedHand.length;
                 const mid = (total - 1) / 2;
-                const rotation = (idx - mid) * (40 / Math.max(total, 5));
-                const yOffset = Math.abs(idx - mid) * 2;
+
+                // Tighten fan as hand grows to prevent extreme horizontal stretching
+                const fanAngle = Math.max(15, 40 - (total * 1.5));
+                const rotation = (idx - mid) * (fanAngle / Math.max(total, 5));
+
+                // Tighten spacing offset
+                const yOffset = Math.abs(idx - mid) * 1.5;
 
                 return (
                     <motion.div
@@ -76,6 +81,8 @@ interface Props {
     onAcceptChallenge?: () => void;
     onChallengeDraw4?: () => void;
     onResetToLobby?: () => void;
+    onDeclareUno?: () => void;
+    onCallNoUno?: () => void;
 }
 
 const Game: React.FC<Props> = ({
@@ -86,11 +93,25 @@ const Game: React.FC<Props> = ({
     onPassTurn,
     onAcceptChallenge,
     onChallengeDraw4,
-    onResetToLobby
+    onResetToLobby,
+    onDeclareUno,
+    onCallNoUno
 }) => {
 
     const me = gameState.players.find((p: any) => p.userId === myId);
     const others = gameState.players.filter((p: any) => p.userId !== myId);
+    const [viewportWidth, setViewportWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setViewportWidth(window.innerWidth);
+            setViewportHeight(window.innerHeight);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const isMyTurn = gameState.players[gameState.currentPlayerIndex].userId === myId;
     const topCard = gameState.discardPile[gameState.discardPile.length - 1];
 
@@ -103,7 +124,20 @@ const Game: React.FC<Props> = ({
         const saved = localStorage.getItem('uno_autohide_hand');
         return saved === 'true'; // Default to false if not present ('true' !== undefined)
     });
+    const [showYourTurn, setShowYourTurn] = useState<boolean>(false);
     const scrollRef = React.useRef<HTMLDivElement>(null);
+
+    // "Your Turn" notification flash
+    useEffect(() => {
+        if (!isMyTurn) {
+            setShowYourTurn(false);
+            return;
+        }
+        const interval = setInterval(() => {
+            setShowYourTurn(prev => !prev);
+        }, 2000);
+        return () => clearInterval(interval);
+    }, [isMyTurn]);
 
     // Sequential Hand Loading Engine — preserves user drag order
     React.useEffect(() => {
@@ -124,18 +158,25 @@ const Game: React.FC<Props> = ({
     }, [me?.hand]);
 
 
+    const hasUnoToSay = gameState.rules?.requireUnoDeclaration && me?.hand?.length === 1 && !me?.saidUno;
+    const canCallNoUno = gameState.rules?.allowCallNoUno && others.some((p: any) => p.hand.length === 1 && !p.saidUno);
+
     // Auto-minimize hand logic
     useEffect(() => {
+        if (hasUnoToSay || canCallNoUno) {
+            // Force show if there's an active UNO situation to address
+            setIsHandMinimized(false);
+            return;
+        }
+
         if (isMyTurn) {
-            // My turn starts: always show
             setIsHandMinimized(false);
         } else {
-            // Someone else's turn: auto-hide ONLY if the user hasn't explicitly clicked "SHOW" (global preference)
             if (autoHidePreference) {
                 setIsHandMinimized(true);
             }
         }
-    }, [isMyTurn, autoHidePreference]);
+    }, [isMyTurn, autoHidePreference, hasUnoToSay, canCallNoUno]);
 
     const handleToggleHand = () => {
         const nextState = !isHandMinimized;
@@ -195,6 +236,10 @@ const Game: React.FC<Props> = ({
         onPlaySequence(selection.map(s => s.id), color);
     };
 
+    const cancelColorSelection = () => {
+        setShowColorPicker(false);
+    };
+
     const handleAutoSort = () => {
         const colorOrder: Record<string, number> = { red: 0, blue: 1, green: 2, yellow: 3, wild: 4 };
         const sorted = [...animatedHand].sort((a: any, b: any) => {
@@ -204,33 +249,58 @@ const Game: React.FC<Props> = ({
         setAnimatedHand(sorted);
     };
 
-    // Calculate circular positions for opponents
-    const getSeatPosition = (index: number, total: number) => {
+    // Calculate circular positions for opponents with perspective scaling
+    const getSeatPosition = (index: number, total: number, isActive: boolean = false) => {
         const isMobile = window.innerWidth <= 480;
-        // In portrait mode, push the player orbit higher and narrower to clear the action zone
         const isPortrait = window.innerHeight > window.innerWidth;
         const radiusFactor = isHandMinimized ? 0.75 : 1.0;
+        const aspectRatio = window.innerWidth / Math.max(window.innerHeight, 1);
 
-        // Narrower arc for portrait to keep players in a tighter "crown"
-        const portraitStartAngle = (170 * Math.PI) / 180;
-        const portraitEndAngle = (370 * Math.PI) / 180;
-
-        const startAngle = isPortrait ? portraitStartAngle : (140 * Math.PI) / 180;
-        const endAngle = isPortrait ? portraitEndAngle : (400 * Math.PI) / 180;
-
-        const portraitScaleX = 1.0;
-        const portraitScaleY = isPortrait ? 1.1 : 1.0;
-
-        const radiusX = (isMobile ? (total > 5 ? 36 : 40) : 42) * radiusFactor * portraitScaleX;
-        const radiusY = (isMobile ? (total > 5 ? 22 : 30) : 34) * radiusFactor * portraitScaleY;
-        const centerY = (isMobile && isPortrait) ? (isHandMinimized ? 35 : 40) : (isMobile ? (isHandMinimized ? 42 : 48) : 52);
+        // Dynamic arc: narrow for few players, wide for many
+        const arcSpread = Math.min(260, 140 + (total * 15));
+        const centerAngle = 270; // Top center
+        const startAngle = ((centerAngle - arcSpread / 2) * Math.PI) / 180;
+        const endAngle = ((centerAngle + arcSpread / 2) * Math.PI) / 180;
 
         const step = total > 1 ? (endAngle - startAngle) / (total - 1) : 0;
         const angle = total === 1 ? (startAngle + endAngle) / 2 : startAngle + (step * index);
 
+        // ANTI-SMUSH REACH
+        // radiusX: We dampen the horizontal expansion on very wide screens to keep it more circular/oval
+        const desktopXBase = isPortrait ? 40 : Math.min(42, 35 + (aspectRatio * 1.5));
+        const radiusX = (isMobile ? (total > 5 ? 35 : 40) : desktopXBase) * radiusFactor;
+
+        // radiusY: Fill more vertical space on desktop while staying clear of the bottom hand
+        // Mobile landscape still needs to be tight (32), but desktop can afford more (42+)
+        const desktopYBase = isPortrait ? (total > 5 ? 50 : 60) : (total > 5 ? 40 : 45);
+        const mobileYBase = isPortrait ? (total > 5 ? 45 : 55) : 32;
+        const radiusY = (isMobile ? mobileYBase : desktopYBase) * radiusFactor;
+
+        // Center shift: Anchored higher for portrait
+        const centerY = isPortrait ? 35 : 42;
+
+        // DEPTH FACTOR (0 = Very top/furthest, 1 = Very bottom/closest)
+        const depthFactor = (Math.sin(angle) + 1) / 2;
+
+        // AGGRESSIVE SCALING FOR CARDS
+        // Top: 0.45, Bottom: 1.15
+        const cardScale = 0.45 + (depthFactor * 0.7);
+
+        // STABLE SCALING FOR NAMETAGS
+        // Top: 0.8, Bottom: 1.05
+        const labelScale = 0.8 + (depthFactor * 0.25);
+
+        const crowdingScale = total > 5 ? Math.max(0.75, 1 - (total - 5) * 0.05) : 1;
+
+        // Z-Index: Higher sin(angle) means closer to user
+        const zIndex = 10 + Math.floor(depthFactor * 50);
+
         return {
             left: `${50 + radiusX * Math.cos(angle)}%`,
-            top: `${centerY + radiusY * Math.sin(angle)}%`
+            top: `${centerY + radiusY * Math.sin(angle)}%`,
+            cardScale: cardScale * crowdingScale * (isActive ? 1.1 : 1.0),
+            labelScale: labelScale * (isActive ? 1.05 : 1.0),
+            zIndex
         };
     };
 
@@ -253,34 +323,9 @@ const Game: React.FC<Props> = ({
         };
     };
 
-    const handScrollRef = useRef<HTMLUListElement>(null);
-    const [canScrollLeft, setCanScrollLeft] = useState(false);
-    const [canScrollRight, setCanScrollRight] = useState(false);
-
-    const checkScroll = () => {
-        if (handScrollRef.current) {
-            const { scrollLeft, scrollWidth, clientWidth } = handScrollRef.current;
-            setCanScrollLeft(scrollLeft > 5);
-            setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
-        }
-    };
-
-    useEffect(() => {
-        checkScroll();
-        window.addEventListener('resize', checkScroll);
-        return () => window.removeEventListener('resize', checkScroll);
-    }, [animatedHand]);
-
-    const scrollHand = (direction: 'left' | 'right') => {
-        if (handScrollRef.current) {
-            const isMobile = window.innerWidth <= 768;
-            const amount = direction === 'left' ? (isMobile ? -80 : -120) : (isMobile ? 80 : 120);
-            handScrollRef.current.scrollBy({ left: amount, behavior: 'smooth' });
-            setTimeout(checkScroll, 400); // Check after smooth scroll finishes
-        }
-    };
 
     return (
+
         <div className="game-screen">
             {/* History Toggle Button */}
             <button className="history-toggle-btn" onClick={() => setShowHistory(!showHistory)}>
@@ -309,35 +354,68 @@ const Game: React.FC<Props> = ({
             <LayoutGroup>
                 {/* Integrated Command Center - Docked bottom (Order matters for CSS ~ sibling selector) */}
                 <div className={`hand-command-center ${isMyTurn ? 'my-turn-glow' : ''} ${isHandMinimized ? 'minimized' : ''}`}>
-                    <button key="toggle-tab" className="neo-button toggle-btn-inline" onClick={handleToggleHand} disabled={isMyTurn}>
-                        {isHandMinimized ? '👁️ SHOW' : '🙈 HIDE'}
-                    </button>
-                    <div className="my-hand-container">
-                        <div className="hand-controls">
-                            <span className="direction-indicator">{gameState.direction === 1 ? '↻ CLOCKWISE' : '↺ ANTI-CLOCKWISE'}</span>
-                            <span className="player-name-label">PLAYER {me?.name}</span>
-                            <button className="neo-button sort-btn" onClick={handleAutoSort}>⚡ SORT</button>
+                    {/* Centered Selection Zone (Internal to Command Center for better mobile/desktop alignment) */}
+                    <AnimatePresence>
+                        {selection.length > 0 && !showColorPicker && (
+                            <motion.div
+                                className="selection-zone floating"
+                                initial={{ y: 20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 20, opacity: 0 }}
+                            >
+                                <div className="selection-header">
+                                    <div className="selection-info">
+                                        <h3>SELECTED ({selection.length})</h3>
+                                        <div className="button-group">
+                                            <button className="neo-button confirm-btn" disabled={me.isSpectator} onClick={handleConfirm}>CONFIRM PLAY</button>
+                                            <button className="neo-button secondary small" onClick={() => setSelection([])}>X</button>
+                                        </div>
+                                    </div>
+                                    <div className="selection-list">
+                                        <AnimatePresence>
+                                            {selection.map(card => (
+                                                <div key={card.id} className="selected-card-wrapper" onClick={() => removeFromSelection(card.id)}>
+                                                    <UnoCard card={card} isSmall disabled noLayout />
+                                                </div>
+                                            ))}
+                                        </AnimatePresence>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                            {isMyTurn && gameState.drewThisTurn && selection.length === 0 && (
-                                <button className="neo-button pass-btn-inline" onClick={onPassTurn}>🚀 PASS</button>
-                            )}
+                    <div className="my-hand-container">
+                        <div className="hand-controls compact">
+                            <div className="control-group-left">
+                                <button className="neo-button toggle-btn-inline" onClick={handleToggleHand} disabled={isMyTurn}>
+                                    {isHandMinimized ? '👁️ SHOW' : '🙈 HIDE'}
+                                </button>
+                                <button className="neo-button sort-btn small" onClick={handleAutoSort}>⚡ SORT</button>
+                                {isMyTurn && gameState.drewThisTurn && selection.length === 0 && (
+                                    <button className="neo-button pass-btn-inline" onClick={onPassTurn}>🚀 PASS</button>
+                                )}
+                                {hasUnoToSay && (
+                                    <button className="neo-button uno-btn pulse" onClick={onDeclareUno}>📣 UNO!</button>
+                                )}
+                                {canCallNoUno && (
+                                    <button className="neo-button nouno-btn pulse" onClick={onCallNoUno}>🚫 NO UNO!</button>
+                                )}
+                            </div>
+                            <span className={`player-name-label ${showYourTurn ? 'your-turn-active pulse' : ''}`}>
+                                {showYourTurn ? 'YOUR TURN!' : me?.name}
+                            </span>
                         </div>
                         <div className="my-hand-wrapper">
-                            <button
-                                className={`hand-scroll-btn scroll-left-btn ${!canScrollLeft ? 'disabled' : ''}`}
-                                onClick={() => canScrollLeft && scrollHand('left')}
-                            >
-                                <span className="arrow">←</span>
-                            </button>
                             <div className="my-hand">
                                 <Reorder.Group
                                     axis="x"
                                     values={animatedHand}
                                     onReorder={setAnimatedHand}
                                     className="reorder-hand"
-                                    ref={handScrollRef}
-                                    onScroll={checkScroll}
                                 >
+
+
                                     <AnimatePresence>
                                         {animatedHand.map((card: any, idx: number) => {
                                             const isSelected = selection.find(s => s.id === card.id);
@@ -345,16 +423,58 @@ const Game: React.FC<Props> = ({
                                                 ? (gameState.pendingDrawCount > 0 ? isCardPlayableInWar(card) : isCardPlayableNormally(card))
                                                 : (card.value === selection[0].value);
 
+                                            // Refined Panoramic Fan & Dynamic Spreading Logic
+                                            const total = animatedHand.length;
+                                            const mid = (total - 1) / 2;
+
+                                            // Responsive Card Width for fanning math
+                                            const isMobileLandscape = viewportHeight < 600 && viewportWidth > viewportHeight;
+                                            const getBaseCardWidth = () => {
+                                                if (isMobileLandscape) return 60; // Landscape mobile
+                                                if (viewportWidth <= 480) return 75; // Portrait mobile
+                                                if (viewportWidth <= 768) return 85; // Tablet
+                                                return 110; // Desktop
+                                            };
+                                            const cardWidth = getBaseCardWidth();
+
+                                            const targetSpan = Math.min(viewportWidth * 0.92, 1400);
+
+                                            const calcSpacing = total <= 1 ? 0 : (targetSpan - cardWidth) / (total - 1);
+                                            // Dynamic margin - spread out MORE in landscape as we have width to spare
+                                            const dynamicMargin = total <= 1 ? 0 : (calcSpacing - cardWidth) / 2;
+
+                                            // Clamp for stability: landscape needs even less aggressive negative margins
+                                            const minMargin = isMobileLandscape ? -20 : (viewportWidth < 600 ? -40 : -55);
+                                            const finalMargin = Math.max(minMargin, Math.min(25, dynamicMargin));
+
+                                            // Ultra-Compact Arc for Mobile/Landscape
+                                            const arcPower = isMobileLandscape ? 25 : (viewportWidth < 600 ? 40 : 45);
+                                            const rotation = (idx - mid) * (arcPower / Math.max(total, 4));
+                                            const yOffset = Math.abs(idx - mid) * (isMobileLandscape ? 4 : (viewportWidth < 600 ? 8 : 10));
+
+
+
+
                                             return (
                                                 <Reorder.Item
                                                     value={card}
                                                     key={card.id}
                                                     className="player-card-wrapper drag-item"
-                                                    style={{ zIndex: isSelected ? 100 : idx }}
+                                                    style={{
+                                                        zIndex: isSelected ? 100 : idx,
+                                                        marginLeft: finalMargin,
+                                                        marginRight: finalMargin
+                                                    }}
+
                                                     onClick={() => handleCardClick(card)}
-                                                    whileDrag={{ scale: 1.15, zIndex: 100, y: -20 }}
-                                                    initial={{ opacity: 0, y: 50, scale: 0.8 }}
-                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    whileDrag={{ scale: 1.15, zIndex: 100, y: -20, rotate: 0 }}
+                                                    initial={{ opacity: 0, y: 100, scale: 0.8 }}
+                                                    animate={{
+                                                        opacity: 1,
+                                                        y: isSelected ? -30 : yOffset,
+                                                        rotate: isSelected ? 0 : rotation,
+                                                        scale: isSelected ? 1.05 : 1
+                                                    }}
                                                     exit={{ opacity: 0, y: -50, scale: 0 }}
                                                     transition={{ type: "spring", stiffness: 300, damping: 25 }}
                                                 >
@@ -367,15 +487,11 @@ const Game: React.FC<Props> = ({
                                             );
                                         })}
                                     </AnimatePresence>
+
                                 </Reorder.Group>
                             </div>
-                            <button
-                                className={`hand-scroll-btn scroll-right-btn ${!canScrollRight ? 'disabled' : ''}`}
-                                onClick={() => canScrollRight && scrollHand('right')}
-                            >
-                                <span className="arrow">→</span>
-                            </button>
                         </div>
+
                     </div>
                 </div>
 
@@ -383,23 +499,33 @@ const Game: React.FC<Props> = ({
                     <div className="circular-orbit">
                         {others.map((player: any, index: number) => {
                             const isFinished = gameState.finishedPlayers?.includes(player.userId);
-                            const pos = getSeatPosition(index, others.length);
                             const isActive = gameState.players[gameState.currentPlayerIndex].userId === player.userId;
+                            const pos = getSeatPosition(index, others.length, isActive);
 
                             return (
                                 <div
                                     key={player.userId}
                                     className={`table-seat ${isActive ? 'active' : ''}`}
-                                    style={{ ...pos, transform: 'translate(-50%, -50%)' }}
+                                    style={{
+                                        left: pos.left,
+                                        top: pos.top,
+                                        transform: `translate(-50%, -50%)`, // Centering
+                                        zIndex: pos.zIndex
+                                    }}
                                 >
-                                    {!isFinished && <MiniHand hand={player.hand} active={isActive} />}
-                                    <div className="opponent-tag isometric">
-                                        <div className="tag-inner">{player.name}</div>
+                                    <div className="billboard">
+                                        <div className="scaling-carrier" style={{ transform: `scale(${pos.cardScale})`, transformOrigin: 'bottom center' }}>
+                                            {!isFinished && <MiniHand hand={player.hand} active={isActive} />}
+                                        </div>
+                                        <div className="opponent-tag isometric" style={{ transform: `scale(${pos.labelScale})` }}>
+                                            <div className="tag-inner">{player.name}</div>
+                                        </div>
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
+
 
 
 
@@ -410,43 +536,65 @@ const Game: React.FC<Props> = ({
                                 <div className={`deck-pile ${me.isSpectator ? 'disabled' : ''}`} onClick={isMyTurn && !me.isSpectator && selection.length === 0 ? onDrawCard : undefined}>
                                     <div className="deck-3d-stack">
                                         <div className="deck-shadow-layer"></div>
-                                        {[...Array(5)].map((_, i) => (
-                                            <div key={i} className="deck-card-layer" style={{ transform: `translateZ(${i * 2}px) translateY(-${i}px)` }}>
-                                                {i === 4 && <div className="deck-card back"></div>}
+                                        {/* Dynamic 3D stack based on deck length. Max 15 layers for performance/visuals */}
+                                        {[...Array(Math.min(15, Math.ceil((gameState.deck?.length || 0) / 4)))].map((_, i) => (
+                                            <div
+                                                key={i}
+                                                className="deck-card-layer"
+                                                style={{
+                                                    transform: `translateZ(${i * 3}px) translateY(-${i}px)`,
+                                                    boxShadow: `0 ${i}px ${i * 2}px rgba(0,0,0,0.4)`
+                                                }}
+                                            >
+                                                {i === Math.min(15, Math.ceil((gameState.deck?.length || 0) / 4)) - 1 && (
+                                                    <div className="deck-card back"></div>
+                                                )}
                                             </div>
                                         ))}
+                                        {/* Subtle label for deck count */}
+                                        <div className="deck-count-indicator">{gameState.deck?.length || 0}</div>
                                     </div>
                                 </div>
 
                                 <div className="discard-pile-cluster" onClick={() => setShowHistory(!showHistory)}>
                                     <AnimatePresence mode="popLayout">
-                                        {gameState.discardPile.slice(-5).map((card: any, idx: number) => (
-                                            <motion.div
-                                                key={`${card.id}-${idx}`}
-                                                className="discarded-card-physical"
-                                                initial={{ scale: 0.5, opacity: 0, rotate: 90 }}
-                                                animate={{
-                                                    scale: 1,
-                                                    opacity: 1,
-                                                    rotate: getRotationById(card.id),
-                                                    x: getOffsetById(card.id).x,
-                                                    y: getOffsetById(card.id).y,
-                                                    zIndex: idx
-                                                }}
-                                                exit={{ opacity: 0, scale: 0.8 }}
-                                                transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                                            >
-                                                <UnoCard card={card} />
-                                            </motion.div>
-                                        ))}
+                                        {gameState.discardPile.slice(-8).map((card: any, idx: number) => {
+                                            const scatter = getOffsetById(card.id);
+                                            return (
+                                                <motion.div
+                                                    key={`${card.id}-${idx}`}
+                                                    className="discarded-card-physical"
+                                                    initial={{ scale: 0.5, opacity: 0, rotate: 90, z: 100 }}
+                                                    animate={{
+                                                        scale: 1,
+                                                        opacity: 1,
+                                                        rotate: getRotationById(card.id) * 1.5,
+                                                        x: scatter.x * 0.8,
+                                                        y: scatter.y * 0.8,
+                                                        z: idx * 2,
+                                                        transition: { type: "spring", stiffness: 200, damping: 20 }
+                                                    }}
+                                                    exit={{ opacity: 0, scale: 0.8 }}
+                                                >
+                                                    <UnoCard card={card} />
+                                                </motion.div>
+                                            );
+                                        })}
                                     </AnimatePresence>
+
                                     {gameState.pendingDrawCount > 0 && (
                                         <div className="draw-warning pulse">DRAW WAR: +{gameState.pendingDrawCount}</div>
                                     )}
                                 </div>
                             </div>
+                            <div className="arena-indicators">
+                                <div className="direction-indicator-floating">
+                                    {gameState.direction === 1 ? '↻ CLOCKWISE' : '↺ ANTI-CLOCKWISE'}
+                                </div>
+                            </div>
                         </div>
                     </div>
+
 
                     {/* History sidebar — toggleable */}
                     {showHistory && (
@@ -486,33 +634,7 @@ const Game: React.FC<Props> = ({
 
             {/* OVERLAY SECTION - Outside LayoutGroup for stability */}
             <AnimatePresence>
-                {selection.length > 0 && (
-                    <motion.div
-                        className="selection-zone floating"
-                        initial={{ y: 50, opacity: 0, x: '-50%' }}
-                        animate={{ y: 0, opacity: 1, x: '-50%' }}
-                        exit={{ y: 50, opacity: 0, x: '-50%' }}
-                    >
-                        <div className="selection-header">
-                            <div className="selection-info">
-                                <h3>SELECTED ({selection.length})</h3>
-                                <div className="button-group">
-                                    <button className="neo-button confirm-btn" disabled={me.isSpectator} onClick={handleConfirm}>CONFIRM PLAY</button>
-                                    <button className="neo-button secondary small" onClick={() => setSelection([])}>X</button>
-                                </div>
-                            </div>
-                            <div className="selection-list">
-                                <AnimatePresence>
-                                    {selection.map(card => (
-                                        <div key={card.id} className="selected-card-wrapper" onClick={() => removeFromSelection(card.id)}>
-                                            <UnoCard card={card} isSmall disabled noLayout />
-                                        </div>
-                                    ))}
-                                </AnimatePresence>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
+                {/* Selection zone moved into hand-command-center for better centering */}
             </AnimatePresence>
 
             {/* Color Picker Modal */}
@@ -536,6 +658,7 @@ const Game: React.FC<Props> = ({
                                 <div className="color-btn green" onClick={() => selectColor('green')}></div>
                                 <div className="color-btn yellow" onClick={() => selectColor('yellow')}></div>
                             </div>
+                            <button className="neo-button secondary cancel-picker-btn" onClick={cancelColorSelection}>CANCEL</button>
                         </motion.div>
                     </motion.div>
                 )}

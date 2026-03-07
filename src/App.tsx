@@ -69,6 +69,10 @@ const App: React.FC = () => {
     } else if (action.type === 'challenge_result') {
       eventType = action.result === 'success' ? 'EXPOSED!' : 'INNOCENT!';
       if (action.penaltyCount) eventCount = action.penaltyCount;
+    } else if (action.type === 'uno_announcement') {
+      eventType = 'UNO!';
+    } else if (action.type === 'uno_penalty') {
+      eventType = 'EXPOSED!';
     }
 
     if (eventType) {
@@ -114,7 +118,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Removed aggressive auto-save useEffect to prevent overwriting custom rules on refresh.
   useEffect(() => {
     // If we're the host and in a lobby, push our preferred rules if they differ
     if (gameState?.status === 'lobby' && gameState.hostUserId === userId) {
@@ -123,16 +126,13 @@ const App: React.FC = () => {
         try {
           const parsed = JSON.parse(saved);
           const currentRules = gameState.rules || {};
-
-          // Check for meaningful differences including deckConfig
           const hasDiff = JSON.stringify(parsed) !== JSON.stringify(currentRules);
-
-          if (hasDiff) {
-            updateRules(parsed);
+          // Only sync if the server rules are empty (initial join) 
+          // to prevent overwriting manual UI changes during the session.
+          if (hasDiff && Object.keys(currentRules).length === 0) {
+            socket.emit('update_rules', { roomId, rules: parsed, userId });
           }
-        } catch (e) {
-          console.error("Failed to parse saved rules", e);
-        }
+        } catch (e) { console.error(e); }
       }
 
       const savedAi = localStorage.getItem('uno_ai_count');
@@ -247,6 +247,20 @@ const App: React.FC = () => {
                       <option value="winner">Previous Winner</option>
                     </select>
                   </label>
+                  <label className="rule-item" title="Initial flight direction. Clockwise is the standard rotation.">
+                    <div className="rule-label-group">
+                      <span>Starting Rotation</span>
+                      <small>Initial orbit path</small>
+                    </div>
+                    <select
+                      disabled={gameState.hostUserId !== userId}
+                      value={gameState.rules?.startDirection ?? 1}
+                      onChange={(e) => updateRules({ startDirection: parseInt(e.target.value) })}
+                    >
+                      <option value={1}>Clockwise (Standard)</option>
+                      <option value={-1}>Anti-Clockwise (Orbit Swap)</option>
+                    </select>
+                  </label>
                   {gameState.rules?.gameMode === 'points' && (
                     <label className="rule-item" title="Score or rounds required to end the session.">
                       <div className="rule-label-group">
@@ -329,6 +343,20 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ allowDraw2OnDraw4: e.target.checked })}
                     />
                   </label>
+                  {gameState.rules?.allowDraw2OnDraw4 && (
+                    <label className="rule-item" title="Draw 2 on Draw 4: Must match color. The +2 defense is only valid if it matches the color chosen by the +4 player.">
+                      <div className="rule-label-group">
+                        <span className="accent-sub">Color Precision Rule</span>
+                        <small>Strict stacking match</small>
+                      </div>
+                      <input
+                        type="checkbox"
+                        disabled={gameState.hostUserId !== userId}
+                        checked={gameState.rules?.draw2OnDraw4ColorMatch ?? false}
+                        onChange={(e) => updateRules({ draw2OnDraw4ColorMatch: e.target.checked })}
+                      />
+                    </label>
+                  )}
                   <label className="rule-item" title="Official Rule: When someone plays a Wild Draw 4, you can challenge them. If they had another card of the current color, they draw 4 instead of you. If they were honest, you draw 6!">
                     <div className="rule-label-group">
                       <span>Challenge Rule</span>
@@ -403,6 +431,30 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ specialReverse: e.target.checked })}
                     />
                   </label>
+                  <label className="rule-item" title="UNCERTAINTY: If disabled, players don't need to declare UNO and won't be penalized.">
+                    <div className="rule-label-group">
+                      <span>Require UNO! Declaration</span>
+                      <small>Mandatory shout with 1 card</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.requireUnoDeclaration ?? true}
+                      onChange={(e) => updateRules({ requireUnoDeclaration: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="UNCERTAINTY: If enabled, opponents can click 'NO UNO!' to penalize players who forgot to declare.">
+                    <div className="rule-label-group">
+                      <span>Allow 'NO UNO!' Callouts</span>
+                      <small>Opponents can catch you</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.allowCallNoUno ?? true}
+                      onChange={(e) => updateRules({ allowCallNoUno: e.target.checked })}
+                    />
+                  </label>
                 </div>
 
                 <h3 className="section-title">DECK COMPOSITION</h3>
@@ -471,6 +523,8 @@ const App: React.FC = () => {
           onPassTurn={() => socket.emit('pass_turn', { roomId, userId })}
           onAcceptChallenge={() => socket.emit('accept_draw4', { roomId, userId })}
           onChallengeDraw4={() => socket.emit('challenge_draw4', { roomId, userId })}
+          onDeclareUno={() => socket.emit('declare_uno', { roomId, userId })}
+          onCallNoUno={() => socket.emit('call_no_uno', { roomId, userId })}
           onResetToLobby={() => socket.emit('reset_to_lobby', { roomId, userId })}
         />
       ) : (

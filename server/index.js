@@ -153,6 +153,16 @@ io.on('connection', (socket) => {
     handleChallengeDraw4(roomId, userId);
   });
 
+  socket.on('declare_uno', ({ roomId, userId }) => {
+    const { handleDeclareUno } = require('./services/playerActionService');
+    handleDeclareUno(roomId, userId);
+  });
+
+  socket.on('call_no_uno', ({ roomId, userId }) => {
+    const { handleCallNoUno } = require('./services/playerActionService');
+    handleCallNoUno(roomId, userId);
+  });
+
   socket.on('pass_turn', ({ roomId, userId }) => {
     const room = rooms.get(roomId);
     if (!room || room.status !== 'playing') return;

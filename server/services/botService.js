@@ -33,6 +33,19 @@ const checkBotTurn = (roomId) => {
 
                 const actionService = getPlayerActionService();
 
+                // Competitive Logic: Bots check if anyone forgot to say UNO
+                if (room.rules?.allowCallNoUno) {
+                    const forgetful = room.players.find(p => p.userId !== player.userId && !p.isSpectator && p.hand.length === 1 && !p.saidUno);
+                    if (forgetful && Math.random() < 0.7) {
+                        console.log(`[BOT] ${player.name} calling out ${forgetful.name} for missing UNO!`);
+                        actionService.handleCallNoUno(roomId, player.userId);
+                        // Delay the actual turn slightly after calling out for realism
+                        setTimeout(() => checkBotTurn(roomId), 1500);
+                        room.botIsThinking = false;
+                        return;
+                    }
+                }
+
                 if (room.pendingChallenge && room.pendingChallenge.victimId === player.userId) {
                     const canStack = player.hand.some(c => (c.value === 'Draw4' || (c.value === 'Draw2' && room.rules?.allowDraw2OnDraw4)));
 

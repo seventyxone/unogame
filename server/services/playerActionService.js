@@ -49,7 +49,13 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
         if (room.rules?.drawWar) {
             if (cards[0].value === 'Draw2' || cards[0].value === 'Draw4') {
                 if (cards[0].value === 'Draw2') {
-                    if (topCard.value === 'Draw2' || (topCard.value === 'Draw4' && room.rules?.allowDraw2OnDraw4)) canPlayFirst = true;
+                    if (topCard.value === 'Draw2' || (topCard.value === 'Draw4' && room.rules?.allowDraw2OnDraw4)) {
+                        if (topCard.value === 'Draw4' && room.rules?.draw2OnDraw4ColorMatch) {
+                            if (cards[0].color === topCard.color) canPlayFirst = true;
+                        } else {
+                            canPlayFirst = true;
+                        }
+                    }
                 } else if (cards[0].value === 'Draw4') {
                     if (topCard.value === 'Draw4' || (topCard.value === 'Draw2' && room.rules?.allowDraw4OnDraw2)) canPlayFirst = true;
                 }
@@ -96,7 +102,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
             card.color = newColor || 'red'; // Set all wild tiles in this sequence to chosen color
         }
         room.discardPile.push(card);
-        if (room.discardPile.length > 30) room.discardPile.shift();
+        // Removed the truncation limit to allow full deck refill
         if (card.value === 'Draw2') totalDraw += 2;
         if (card.value === 'Draw4') totalDraw += 4;
         if (card.value === 'Reverse') revCount++;
@@ -252,7 +258,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
                 room.finishedPlayers.push(player.userId);
             }
 
-            const activeCount = room.players.filter(p => !room.finishedPlayers.includes(p.userId)).length;
+            const activeCount = room.players.filter(p => !p.isSpectator && !room.finishedPlayers.includes(p.userId)).length;
             if (activeCount === 1) {
                 handleWin(roomId, player); // Ends round
             } else {
@@ -265,6 +271,19 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
     } else {
         io.to(roomId).emit('game_update', room);
         getBotService().checkBotTurn(roomId);
+    }
+
+    // Reset saidUno if they have more than 1 card, or just reset on every play to force re-declaration
+    player.saidUno = false;
+
+    // Bot UNO logic: 95% chance to say it after a 1.5s delay
+    if (room.rules?.requireUnoDeclaration && player.isBot && player.hand.length === 1) {
+        setTimeout(() => {
+            if (player.hand.length === 1 && !player.saidUno && Math.random() < 0.95) {
+                console.log(`[BOT] ${player.name} declaring UNO automatically.`);
+                handleDeclareUno(roomId, player.userId);
+            }
+        }, 1500);
     }
 };
 
@@ -404,7 +423,7 @@ const handleAcceptChallenge = (roomId, userId) => {
             if (!room.finishedPlayers.includes(attacker.userId)) {
                 room.finishedPlayers.push(attacker.userId);
             }
-            const activeCount = room.players.filter(p => !room.finishedPlayers.includes(p.userId)).length;
+            const activeCount = room.players.filter(p => !p.isSpectator && !room.finishedPlayers.includes(p.userId)).length;
             if (activeCount === 1) {
                 handleWin(roomId, attacker);
             } else {
@@ -459,7 +478,7 @@ const handleChallengeDraw4 = (roomId, userId) => {
             if (!room.finishedPlayers.includes(attacker.userId)) {
                 room.finishedPlayers.push(attacker.userId);
             }
-            const activeCount = room.players.filter(p => !room.finishedPlayers.includes(p.userId)).length;
+            const activeCount = room.players.filter(p => !p.isSpectator && !room.finishedPlayers.includes(p.userId)).length;
             if (activeCount === 1) {
                 handleWin(roomId, attacker);
             } else {
@@ -473,9 +492,59 @@ const handleChallengeDraw4 = (roomId, userId) => {
     }
 };
 
+const handleDeclareUno = (roomId, userId) => {
+    const room = rooms.get(roomId);
+    const io = getIo();
+    if (!room || !room.rules?.requireUnoDeclaration) return;
+    const player = room.players.find(p => p.userId === userId);
+    if (!player || player.hand.length !== 1) return;
+
+    player.saidUno = true;
+    room.lastAction = {
+        id: Date.now(),
+        type: 'uno_announcement',
+        userId: player.userId,
+        userName: player.name,
+        text: 'declared UNO!'
+    };
+    io.to(roomId).emit('game_update', room);
+};
+
+const handleCallNoUno = (roomId, callingUserId) => {
+    const room = rooms.get(roomId);
+    const io = getIo();
+    if (!room || room.status !== 'playing') return;
+    if (!room.rules?.allowCallNoUno) return;
+
+    const caller = room.players.find(p => p.userId === callingUserId);
+
+    // Find players who have 1 card and haven't said UNO
+    const targets = room.players.filter(p => !p.isSpectator && p.hand.length === 1 && !p.saidUno);
+
+    if (targets.length > 0) {
+        targets.forEach(target => {
+            const drawn = room.deck.splice(0, 2);
+            target.hand.push(...drawn);
+            target.saidUno = false; // Just in case
+            console.log(`[UNO] ${target.name} penalized for failing to say UNO. Caught by ${caller?.name}`);
+        });
+
+        room.lastAction = {
+            id: Date.now(),
+            type: 'uno_penalty',
+            userId: callingUserId,
+            userName: caller?.name || 'Someone',
+            text: `exposed ${targets.length === 1 ? targets[0].name : 'players'}! +2 Cards penalty.`
+        };
+        io.to(roomId).emit('game_update', room);
+    }
+};
+
 module.exports = {
     performPlaySequence,
     performDrawCard,
     handleAcceptChallenge,
-    handleChallengeDraw4
+    handleChallengeDraw4,
+    handleDeclareUno,
+    handleCallNoUno
 };
