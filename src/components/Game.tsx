@@ -565,6 +565,19 @@ const Game: React.FC<Props> = ({
                                         <span className="name">{gameState.lastEliminated}</span> ELIMINATED
                                     </div>
                                 )}
+                                {gameState.rules?.gameMode === 'points' && gameState.scores && (
+                                    <div className="standings-summary">
+                                        <h3>STANDINGS</h3>
+                                        <div className="standings-list">
+                                            {gameState.players.map((p: any) => (
+                                                <div key={p.userId} className="standing-entry">
+                                                    <span className="name">{p.name}</span>
+                                                    <span className="score">{gameState.scores[p.userId] || 0} WINS</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="loading-bar-container">
                                     <small>Preparing next round...</small>
                                     <motion.div

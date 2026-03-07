@@ -50,15 +50,24 @@ const handleWin = (roomId, winner) => {
         }
     } else if (room.rules.gameMode === 'points') {
         room.scores = room.scores || {};
-        room.players.forEach(p => {
-            room.scores[p.userId] = (room.scores[p.userId] || 0) + p.hand.length;
-        });
-        if (room.currentRound >= (room.rules.maxRounds || 3)) {
-            room.status = 'finished';
-            io.to(roomId).emit('game_over', { winner: winner.name, scores: room.scores });
+        room.scores[winner.userId] = (room.scores[winner.userId] || 0) + 1;
+
+        const targetWins = room.rules.maxRounds || 3;
+        const reachedTarget = Object.values(room.scores).some(s => s >= targetWins);
+
+        room.status = 'round_end';
+        io.to(roomId).emit('game_update', room);
+
+        if (reachedTarget) {
+            setTimeout(() => {
+                room.status = 'finished';
+                io.to(roomId).emit('game_over', { winner: winner.name, scores: room.scores, mode: 'points' });
+            }, 3000);
         } else {
-            room.currentRound++;
-            startGameInternal(roomId);
+            setTimeout(() => {
+                room.currentRound++;
+                startGameInternal(roomId);
+            }, 3000);
         }
     } else {
         room.status = 'finished';
