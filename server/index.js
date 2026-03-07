@@ -95,6 +95,7 @@ io.on('connection', (socket) => {
       'Alexander', 'Beatriz', 'Charlie', 'Dimitri', 'Elena', 'Fabian', 'Grace', 'Hiroki', 'Isabella', 'Julian',
       'Katarina', 'Liam', 'Maya', 'Nathan', 'Olivia', 'Pavel', 'Quinn', 'Rafael', 'Sophia', 'Thomas'
     ];
+    console.log(`[Server] Setting bot count to ${count} for room ${roomId}`);
     room.players = room.players.filter(p => !p.isBot);
     const shuffledNames = [...botNames].sort(() => Math.random() - 0.5);
     for (let i = 0; i < count; i++) {
@@ -102,6 +103,7 @@ io.on('connection', (socket) => {
       const name = shuffledNames[i % shuffledNames.length];
       room.players.push({ id: botId, userId: botId, name, hand: [], isBot: true, isSpectator: false });
     }
+    console.log(`[Server] Room ${roomId} now has ${room.players.length} total players.`);
     io.to(roomId).emit('room_update', room);
   });
 

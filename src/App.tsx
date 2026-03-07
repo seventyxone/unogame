@@ -139,7 +139,7 @@ const App: React.FC = () => {
       if (savedAi) {
         const count = parseInt(savedAi, 10);
         const currentAi = gameState.players.filter((p: any) => p.isBot).length;
-        if (count >= 1 && count <= 7 && count !== currentAi) {
+        if (count >= 1 && count !== currentAi) {
           socket.emit('set_bot_count', { roomId, count, userId });
         }
       }
