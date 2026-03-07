@@ -44,8 +44,10 @@ io.on('connection', (socket) => {
         playHistory: [],
         lastAction: null,
         finishedPlayers: [],
+        winners: [],
         rules: {
           gameMode: 'standard',
+          firstTurnRule: 'host', // host, random, winner
           maxRounds: 3,
           drawWar: true,
           allowDraw4OnDraw2: true,
@@ -56,7 +58,7 @@ io.on('connection', (socket) => {
           forcedDrawPass: false,
           playAfterPenalty: true,
           startingHandSize: 7,
-          challengeRule: true, // Official Uno rule: Victims can challenge a Wild Draw 4
+          challengeRule: true,
           deckConfig: { '0': 1, '1': 2, '2': 2, '3': 2, '4': 2, '5': 2, '6': 2, '7': 2, '8': 2, '9': 2, 'Skip': 2, 'Reverse': 2, 'Draw2': 2, 'Wild': 4, 'Draw4': 4 }
         }
       });
@@ -68,8 +70,10 @@ io.on('connection', (socket) => {
       player.id = socket.id;
       player.name = playerName;
     } else {
-      if (room.status !== 'lobby') return socket.emit('error', 'Game already in progress');
-      player = { id: socket.id, userId, name: playerName, hand: [], isBot: false };
+      if (room.status !== 'lobby') {
+        return socket.emit('error', 'Late joining is not allowed. This room is already in a game.');
+      }
+      player = { id: socket.id, userId, name: playerName, hand: [], isBot: false, isSpectator: false };
       room.players.push(player);
     }
     io.to(roomId).emit('room_update', room);
@@ -93,10 +97,10 @@ io.on('connection', (socket) => {
     ];
     room.players = room.players.filter(p => !p.isBot);
     const shuffledNames = [...botNames].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < count && room.players.length < 8; i++) {
+    for (let i = 0; i < count; i++) {
       const botId = `bot_${Math.random().toString(36).substr(2, 5)}`;
       const name = shuffledNames[i % shuffledNames.length];
-      room.players.push({ id: botId, userId: botId, name, hand: [], isBot: true });
+      room.players.push({ id: botId, userId: botId, name, hand: [], isBot: true, isSpectator: false });
     }
     io.to(roomId).emit('room_update', room);
   });
@@ -150,6 +154,23 @@ io.on('connection', (socket) => {
     room.currentPlayerIndex = nextPlayerIndex(room);
     io.to(roomId).emit('game_update', room);
     checkBotTurn(roomId);
+  });
+
+  socket.on('reset_to_lobby', ({ roomId, userId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.hostUserId !== userId) return;
+
+    room.status = 'lobby';
+    room.currentRound = 1;
+    room.winners = [];
+    room.finishedPlayers = [];
+    room.lastAction = null;
+    room.players.forEach(p => {
+      p.hand = [];
+      p.isSpectator = false;
+    });
+
+    io.to(roomId).emit('room_update', room);
   });
 
   socket.on('disconnect', () => {

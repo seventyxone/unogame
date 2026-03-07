@@ -360,8 +360,7 @@ const performDrawCard = (roomId, playerId) => {
 const handleAcceptChallenge = (roomId, userId) => {
     const room = rooms.get(roomId);
     const io = getIo();
-    if (!room || !room.pendingChallenge || room.pendingChallenge.victimId !== userId) return;
-
+    const challenge = room.pendingChallenge;
     room.pendingChallenge = null;
     const targetPlayer = room.players[room.currentPlayerIndex];
 

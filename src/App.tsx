@@ -232,6 +232,21 @@ const App: React.FC = () => {
                       <option value="points">Points Mode</option>
                     </select>
                   </label>
+                  <label className="rule-item" title="Choose who starts each round. Host: Always the room host. Random: Shuffles the order. Previous Winner: The last round winner starts.">
+                    <div className="rule-label-group">
+                      <span>First Turn</span>
+                      <small>Round Ignition Phase</small>
+                    </div>
+                    <select
+                      disabled={gameState.hostUserId !== userId}
+                      value={gameState.rules?.firstTurnRule || 'host'}
+                      onChange={(e) => updateRules({ firstTurnRule: e.target.value })}
+                    >
+                      <option value="host">Room Host</option>
+                      <option value="random">Shuffled Random</option>
+                      <option value="winner">Previous Winner</option>
+                    </select>
+                  </label>
                   {gameState.rules?.gameMode === 'points' && (
                     <label className="rule-item" title="Total rounds to play before declaring a point-based winner (1-10).">
                       <div className="rule-label-group">
@@ -256,7 +271,6 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       min="1"
-                      max="7"
                       disabled={gameState.hostUserId !== userId}
                       value={gameState.players.filter((p: any) => p.isBot).length}
                       onChange={(e) => {
@@ -274,7 +288,6 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       min="1"
-                      max="25"
                       disabled={gameState.hostUserId !== userId}
                       value={gameState.rules?.startingHandSize || 7}
                       onChange={(e) => updateRules({ startingHandSize: parseInt(e.target.value) })}
@@ -401,7 +414,6 @@ const App: React.FC = () => {
                       <input
                         type="number"
                         min="0"
-                        max="20"
                         disabled={gameState.hostUserId !== userId}
                         value={val}
                         onChange={(e) => updateRules({ deckConfig: { [key]: parseInt(e.target.value) } })}
@@ -460,6 +472,7 @@ const App: React.FC = () => {
           onPassTurn={() => socket.emit('pass_turn', { roomId, userId })}
           onAcceptChallenge={() => socket.emit('accept_draw4', { roomId, userId })}
           onChallengeDraw4={() => socket.emit('challenge_draw4', { roomId, userId })}
+          onResetToLobby={() => socket.emit('reset_to_lobby', { roomId, userId })}
         />
       ) : (
         <div className="loading">Connecting to the Matrix...</div>

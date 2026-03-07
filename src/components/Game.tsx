@@ -57,6 +57,7 @@ interface Props {
     onPassTurn: () => void;
     onAcceptChallenge?: () => void;
     onChallengeDraw4?: () => void;
+    onResetToLobby?: () => void;
 }
 
 const Game: React.FC<Props> = ({
@@ -66,7 +67,8 @@ const Game: React.FC<Props> = ({
     onDrawCard,
     onPassTurn,
     onAcceptChallenge,
-    onChallengeDraw4
+    onChallengeDraw4,
+    onResetToLobby
 }) => {
 
     const me = gameState.players.find((p: any) => p.userId === myId);
@@ -263,6 +265,19 @@ const Game: React.FC<Props> = ({
                 {showHistory ? '✕' : '📋'}
             </button>
 
+            {/* Spectator Global Badge */}
+            <AnimatePresence>
+                {me.isSpectator && (
+                    <motion.div
+                        className="spectator-indicator"
+                        initial={{ y: -50, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                    >
+                        SPECTATOR MODE
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="arena-background">
             </div>
 
@@ -367,7 +382,7 @@ const Game: React.FC<Props> = ({
                         <div className="board-center">
 
                             <div className="piles-row">
-                                <div className="deck-pile" onClick={isMyTurn && selection.length === 0 ? onDrawCard : undefined}>
+                                <div className={`deck-pile ${me.isSpectator ? 'disabled' : ''}`} onClick={isMyTurn && !me.isSpectator && selection.length === 0 ? onDrawCard : undefined}>
                                     <div className="deck-3d-stack">
                                         <div className="deck-shadow-layer"></div>
                                         {[...Array(5)].map((_, i) => (
@@ -456,7 +471,7 @@ const Game: React.FC<Props> = ({
                             <div className="selection-info">
                                 <h3>SELECTED ({selection.length})</h3>
                                 <div className="button-group">
-                                    <button className="neo-button confirm-btn" onClick={handleConfirm}>CONFIRM PLAY</button>
+                                    <button className="neo-button confirm-btn" disabled={me.isSpectator} onClick={handleConfirm}>CONFIRM PLAY</button>
                                     <button className="neo-button secondary small" onClick={() => setSelection([])}>X</button>
                                 </div>
                             </div>
@@ -529,6 +544,42 @@ const Game: React.FC<Props> = ({
                 )}
             </AnimatePresence>
 
+            {/* Round Summary Modal (Tournament) */}
+            <AnimatePresence>
+                {gameState.status === 'round_end' && (
+                    <motion.div
+                        className="modal-backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className="summary-modal glass"
+                            initial={{ y: 50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                        >
+                            <h2 className="glitch-text-sm">ROUND OVER</h2>
+                            <div className="summary-content">
+                                {gameState.lastEliminated && (
+                                    <div className="elimination-alert">
+                                        <span className="name">{gameState.lastEliminated}</span> ELIMINATED
+                                    </div>
+                                )}
+                                <div className="loading-bar-container">
+                                    <small>Preparing next round...</small>
+                                    <motion.div
+                                        className="loading-bar"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: "100%" }}
+                                        transition={{ duration: 3 }}
+                                    />
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Game Over Modal */}
             <AnimatePresence>
                 {gameState.status === 'finished' && (
@@ -544,9 +595,19 @@ const Game: React.FC<Props> = ({
                         >
                             <h1 className="glitch-text">CHAMPION</h1>
                             <div className="winner-name">{gameState.results?.winner}</div>
-                            <button className="neo-button" onClick={() => window.location.reload()}>
-                                NEW GAME
-                            </button>
+
+                            <div className="game-over-controls">
+                                {gameState.hostUserId === myId ? (
+                                    <button className="neo-button confirm-play" onClick={onResetToLobby}>
+                                        RETURN TO LOBBY // REPLAY
+                                    </button>
+                                ) : (
+                                    <p className="waiting-hint">Waiting for host to reset room...</p>
+                                )}
+                                <button className="neo-button secondary" onClick={() => window.location.reload()}>
+                                    EXIT TO MAIN MENU
+                                </button>
+                            </div>
                         </motion.div>
                     </motion.div>
                 )}
