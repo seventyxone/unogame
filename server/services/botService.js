@@ -80,23 +80,40 @@ const checkBotTurn = (roomId) => {
                     let score = 0;
                     if (stacking) {
                         if (room.rules?.drawWar) {
-                            if (card.value === 'Draw4' && (top.value === 'Draw4' || room.rules?.allowDraw4OnDraw2)) {
+                            const isTwo = card.value.includes('2');
+                            const isFour = card.value.includes('4');
+                            const topIsFour = top.value.includes('4');
+
+                            if (isFour && (topIsFour || room.rules?.allowDraw4OnDraw2)) {
                                 valid = true;
                                 score = 100;
-                            } else if (card.value === 'Draw2' && (top.value === 'Draw2' || room.rules?.allowDraw2OnDraw4)) {
-                                valid = true;
-                                score = 90;
+                            } else if (isTwo && (!topIsFour || room.rules?.allowDraw2OnDraw4)) {
+                                // Important: Check color match rule for bots too
+                                if (topIsFour && room.rules?.draw2OnDraw4ColorMatch) {
+                                    if (card.color === top.color) {
+                                        valid = true;
+                                        score = 90;
+                                    }
+                                } else {
+                                    valid = true;
+                                    score = 90;
+                                }
                             }
                         }
                     } else {
                         if (card.color === top.color || card.value === top.value) {
                             valid = true;
                             score = 50;
-                            if (card.value === 'Skip' || card.value === 'Reverse' || card.value === 'Draw2') score += 10;
+                            if (card.value.includes('Skip') || card.value.includes('Reverse') || card.value.includes('Draw2') || card.value.includes('Hit')) score += 10;
+                            if (card.value.includes('DiscardAll')) {
+                                const matchedCount = player.hand.filter(c => c.color === card.color).length;
+                                score += matchedCount * 15;
+                            }
                         } else if (card.color === 'wild') {
                             valid = true;
-                            score = 20;
-                            if (card.value === 'Draw4') score += 5;
+                            score = 25;
+                            if (card.value.includes('4')) score += 5;
+                            if (card.value.includes('DiscardAll')) score += 40; // Wild discard is very strong
                         }
                     }
 
@@ -127,6 +144,12 @@ const checkBotTurn = (roomId) => {
                     room.botIsThinking = false; // RELEASE LOCK EARLY
                     actionService.performPlaySequence(roomId, bestSeq.map(s => s.id), selectedColor, player.userId);
                 } else {
+                    if (room.pendingDrawCount > 0) {
+                        console.log(`[BOT] ${player.name} forced to draw stack of ${room.pendingDrawCount}.`);
+                        room.botIsThinking = false;
+                        actionService.performDrawCard(roomId, player.userId);
+                        return;
+                    }
                     if (room.drewThisTurn && !room.rules?.drawUntilPlayable) {
                         console.log(`[BOT] ${player.name} passes turn.`);
                         room.drewThisTurn = false;

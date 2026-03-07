@@ -20,11 +20,16 @@ const handleWin = (roomId, winner) => {
     if (!room) return;
 
     room.lastWinnerId = winner.userId;
+    room.lastWinnerName = winner.name;
+
+    // Clear any existing continuation timer
+    if (room.roundContinuationTimer) {
+        clearTimeout(room.roundContinuationTimer);
+        room.roundContinuationTimer = null;
+    }
 
     if (room.rules.gameMode === 'tournament') {
-        // The one player NOT in room.finishedPlayers is the one left with cards
         const loser = room.players.find(p => !p.isSpectator && !room.finishedPlayers.includes(p.userId));
-
         if (loser) {
             loser.isSpectator = true;
             room.lastEliminated = loser.name;
@@ -34,19 +39,16 @@ const handleWin = (roomId, winner) => {
         const totalActive = room.players.filter(p => !p.isSpectator).length;
 
         room.status = 'round_end';
-        io.to(roomId).emit('game_update', room);
-
         if (activeHumans === 0 || totalActive <= 1) {
-            setTimeout(() => {
-                room.status = 'finished';
-                const realWinner = totalActive === 1 ? room.players.find(p => !p.isSpectator).name : 'AI Dominance';
-                io.to(roomId).emit('game_over', { winner: realWinner, mode: 'tournament', loser: loser ? loser.name : 'Unknown' });
-            }, 3000);
+            room.status = 'finished';
+            const realWinner = totalActive === 1 ? room.players.find(p => !p.isSpectator).name : 'AI Dominance';
+            io.to(roomId).emit('game_over', { winner: realWinner, mode: 'tournament', loser: loser ? loser.name : 'Unknown', room });
         } else {
-            setTimeout(() => {
-                room.currentRound++;
-                startGameInternal(roomId);
-            }, 3000);
+            io.to(roomId).emit('game_update', room);
+            // Automatic progression after 10s
+            room.roundContinuationTimer = setTimeout(() => {
+                handlePlayerReady(roomId, room.hostUserId, true);
+            }, 10000);
         }
     } else if (room.rules.gameMode === 'points') {
         room.scores = room.scores || {};
@@ -55,23 +57,61 @@ const handleWin = (roomId, winner) => {
         const targetWins = room.rules.maxRounds || 3;
         const reachedTarget = Object.values(room.scores).some(s => s >= targetWins);
 
-        room.status = 'round_end';
-        io.to(roomId).emit('game_update', room);
-
         if (reachedTarget) {
-            setTimeout(() => {
-                room.status = 'finished';
-                io.to(roomId).emit('game_over', { winner: winner.name, scores: room.scores, mode: 'points' });
-            }, 3000);
+            room.status = 'finished';
+            io.to(roomId).emit('game_over', { winner: winner.name, scores: room.scores, mode: 'points', room });
         } else {
-            setTimeout(() => {
-                room.currentRound++;
-                startGameInternal(roomId);
-            }, 3000);
+            room.status = 'round_end';
+            io.to(roomId).emit('game_update', room);
+            // Automatic progression after 10s
+            room.roundContinuationTimer = setTimeout(() => {
+                handlePlayerReady(roomId, room.hostUserId, true);
+            }, 10000);
         }
     } else {
         room.status = 'finished';
-        io.to(roomId).emit('game_over', { winner: winner.name });
+        io.to(roomId).emit('game_over', { winner: winner.name, room });
+    }
+
+    room.readyPlayers = {};
+};
+
+const handlePlayerReady = (roomId, userId, isAuto = false) => {
+    const room = rooms.get(roomId);
+    const io = getIo();
+    if (!room || (room.status !== 'round_end' && room.status !== 'finished')) return;
+
+    room.readyPlayers = room.readyPlayers || {};
+    room.readyPlayers[userId] = true;
+
+    const hostId = room.hostUserId;
+    const humanPlayers = room.players.filter(p => !p.isBot && !p.isSpectator);
+    const readyCount = humanPlayers.filter(p => room.readyPlayers[p.userId]).length;
+
+    // Clear timer if manually bypassed or auto-triggered
+    if (room.roundContinuationTimer) {
+        clearTimeout(room.roundContinuationTimer);
+        room.roundContinuationTimer = null;
+    }
+
+    if (isAuto || (room.readyPlayers[hostId] && readyCount >= Math.ceil(humanPlayers.length / 2))) {
+        if (room.status === 'round_end') {
+            room.currentRound++;
+            room.readyPlayers = {};
+            startGameInternal(roomId);
+        } else {
+            // Reset to lobby
+            room.status = 'lobby';
+            room.currentRound = 1;
+            room.readyPlayers = {};
+            room.winners = [];
+            room.finishedPlayers = [];
+            room.lastAction = null;
+            room.players.forEach(p => { p.hand = []; p.isSpectator = false; });
+            io.to(roomId).emit('room_update', room);
+        }
+    } else {
+        io.to(roomId).emit('game_update', room);
     }
 };
 
@@ -81,40 +121,30 @@ const startGameInternal = (roomId) => {
     const playingCount = room.players.filter(p => !p.isSpectator).length;
     if (playingCount < 2) return;
     room.status = 'playing';
-    room.botIsThinking = false; // Reset lock to prevent deadlock bleeding across rounds
+    room.botIsThinking = false;
     room.deck = createDeck(room.rules);
     room.discardPile = [];
+    room.direction = room.rules?.startDirection ?? 1;
 
-    // Determine First Player
     const rule = room.rules?.firstTurnRule || 'host';
     let startIndex = 0;
 
     if (rule === 'random') {
         startIndex = Math.floor(Math.random() * room.players.length);
-        console.log(`[GAME] Start Rule: RANDOM. Chose index ${startIndex} (${room.players[startIndex]?.name})`);
     } else if (rule === 'winner' && room.currentRound > 1 && room.lastWinnerId) {
         const winIdx = room.players.findIndex(p => p.userId === room.lastWinnerId);
         startIndex = winIdx !== -1 ? winIdx : 0;
-        console.log(`[GAME] Start Rule: WINNER. Chose winner index ${startIndex} (${room.players[startIndex]?.name})`);
     } else {
         const hostIdx = room.players.findIndex(p => p.userId === room.hostUserId);
         startIndex = hostIdx !== -1 ? hostIdx : 0;
-        console.log(`[GAME] Start Rule: HOST. Chose host index ${startIndex} (${room.players[startIndex]?.name})`);
     }
 
-    // Crucial: Ensure the chosen starting player is actually playing (not eliminated/spectator)
     let safety = 0;
-    const initialStart = startIndex;
     while (room.players[startIndex].isSpectator && safety < room.players.length) {
         startIndex = (startIndex + 1) % room.players.length;
         safety++;
     }
-    if (initialStart !== startIndex) {
-        console.log(`[GAME] Adjusted starting player from ${initialStart} to ${startIndex} because of spectator status.`);
-    }
     room.currentPlayerIndex = startIndex;
-
-    room.direction = room.rules?.startDirection ?? 1;
     room.pendingDrawCount = 0;
     room.lastAction = null;
     room.playHistory = [];
@@ -126,26 +156,24 @@ const startGameInternal = (roomId) => {
         else p.hand = [];
     });
 
-    // Initialize discard pile safely
     const firstCard = room.deck.shift();
     if (!firstCard) {
         room.status = 'lobby';
-        io.to(roomId).emit('error', 'Deck exhausted during setup. Please check lobby settings.');
+        io.to(roomId).emit('error', 'Deck exhausted during setup.');
         return;
     }
 
     room.discardPile = [firstCard];
-
-    // Official Uno Rules: Current top card cannot be Wild or Draw4 at start
     let safetyCounter = 0;
-    while (room.discardPile[0] && room.discardPile[0].color === 'wild' && safetyCounter < 50) {
+    while (room.discardPile[0] &&
+        (room.discardPile[0].color === 'wild' || room.discardPile[0].value === 'Draw4') &&
+        safetyCounter < room.deck.length + 10 &&
+        room.deck.length > 0) {
         room.deck.push(room.discardPile.shift());
-        const nextCard = room.deck.shift();
-        if (nextCard) {
-            room.discardPile = [nextCard];
-        }
+        room.discardPile = [room.deck.shift()];
         safetyCounter++;
     }
+
     io.to(roomId).emit('game_start', room);
     getBotService().checkBotTurn(roomId);
 };
@@ -153,5 +181,6 @@ const startGameInternal = (roomId) => {
 module.exports = {
     nextPlayerIndex,
     handleWin,
+    handlePlayerReady,
     startGameInternal
 };

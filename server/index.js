@@ -58,8 +58,15 @@ io.on('connection', (socket) => {
           forcedDrawPass: false,
           playAfterPenalty: true,
           startingHandSize: 7,
+          requireUnoDeclaration: true,
+          allowCallNoUno: true,
           challengeRule: true,
-          deckConfig: { '0': 1, '1': 2, '2': 2, '3': 2, '4': 2, '5': 2, '6': 2, '7': 2, '8': 2, '9': 2, 'Skip': 2, 'Reverse': 2, 'Draw2': 2, 'Wild': 4, 'Draw4': 4 }
+          deckConfig: {
+            '0': 1, '1': 2, '2': 2, '3': 2, '4': 2, '5': 2, '6': 2, '7': 2, '8': 2, '9': 2,
+            'Skip': 2, 'Reverse': 2, 'Draw2': 2, 'Wild': 4, 'Draw4': 4,
+            'DiscardAll': 0, 'ColorHit2': 0, 'ColorHit4': 0, 'ColorDraw4': 0, 'SkipAll': 0, 'TargetDraw2': 0, 'TargetDraw4': 0,
+            'WildDiscardAll': 0, 'WildHit2': 0, 'WildHit4': 0, 'WildDraw2': 0, 'WildSkipAll': 0, 'WildTargetDraw2': 0, 'WildTargetDraw4': 0, 'WildSkip': 0, 'WildReverse': 0
+          }
         }
       });
     }
@@ -112,7 +119,11 @@ io.on('connection', (socket) => {
     if (room && room.hostUserId === userId) {
       const { deckConfig, ...otherRules } = rules;
       room.rules = { ...room.rules, ...otherRules };
-      if (deckConfig) room.rules.deckConfig = { ...room.rules.deckConfig, ...deckConfig };
+      if (deckConfig) {
+        room.rules.deckConfig = { ...room.rules.deckConfig, ...deckConfig };
+        const totalCards = Object.values(room.rules.deckConfig).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+        console.log(`[Server] Room ${roomId} rules updated. Expected Deck Size: ~${totalCards * 4} (estimated)`);
+      }
       io.to(roomId).emit('room_update', room);
     }
   });
@@ -137,8 +148,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('play_sequence', ({ roomId, cardIds, newColor, userId }) => {
-    performPlaySequence(roomId, cardIds, newColor, userId, socket.id);
+  socket.on('play_sequence', ({ roomId, cardIds, newColor, userId, isUno, targetUserId }) => {
+    performPlaySequence(roomId, cardIds, newColor, userId, socket.id, isUno, targetUserId);
   });
 
   socket.on('draw_card', ({ roomId, userId }) => {
@@ -151,6 +162,11 @@ io.on('connection', (socket) => {
 
   socket.on('challenge_draw4', ({ roomId, userId }) => {
     handleChallengeDraw4(roomId, userId);
+  });
+
+  socket.on('player_ready_continue', ({ roomId, userId }) => {
+    const { handlePlayerReady } = require('./utils/gameCore');
+    handlePlayerReady(roomId, userId);
   });
 
   socket.on('declare_uno', ({ roomId, userId }) => {

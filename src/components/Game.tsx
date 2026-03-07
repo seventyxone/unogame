@@ -75,14 +75,14 @@ const LiveScoreboard: React.FC<{ gameState: any }> = ({ gameState }) => {
 interface Props {
     gameState: any;
     myId: string;
-    onPlaySequence: (cardIds: string[], newColor?: string) => void;
+    onPlaySequence: (cardIds: string[], newColor?: string, isUno?: boolean, targetUserId?: string) => void;
     onDrawCard: () => void;
     onPassTurn: () => void;
     onAcceptChallenge?: () => void;
     onChallengeDraw4?: () => void;
-    onResetToLobby?: () => void;
     onDeclareUno?: () => void;
     onCallNoUno?: () => void;
+    onPlayerReady?: () => void;
 }
 
 const Game: React.FC<Props> = ({
@@ -93,9 +93,9 @@ const Game: React.FC<Props> = ({
     onPassTurn,
     onAcceptChallenge,
     onChallengeDraw4,
-    onResetToLobby,
     onDeclareUno,
-    onCallNoUno
+    onCallNoUno,
+    onPlayerReady
 }) => {
 
     const me = gameState.players.find((p: any) => p.userId === myId);
@@ -125,7 +125,30 @@ const Game: React.FC<Props> = ({
         return saved === 'true'; // Default to false if not present ('true' !== undefined)
     });
     const [showYourTurn, setShowYourTurn] = useState<boolean>(false);
+    const [autoUnoActive, setAutoUnoActive] = useState<boolean>(false);
+    const [showTargetPicker, setShowTargetPicker] = useState<boolean>(false);
+    const [targetSelection, setTargetSelection] = useState<any[]>([]); // Store cards being played while picker is up
+    const [pendingColor, setPendingColor] = useState<string | undefined>(undefined);
     const scrollRef = React.useRef<HTMLDivElement>(null);
+
+    // Reset Auto-UNO at end of turn
+    useEffect(() => {
+        if (!isMyTurn) setAutoUnoActive(false);
+    }, [isMyTurn]);
+
+    const [roundCountdown, setRoundCountdown] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (gameState.status === 'round_end') {
+            setRoundCountdown(10);
+            const timer = setInterval(() => {
+                setRoundCountdown(prev => (prev !== null && prev > 0) ? prev - 1 : 0);
+            }, 1000);
+            return () => clearInterval(timer);
+        } else {
+            setRoundCountdown(null);
+        }
+    }, [gameState.status, gameState.currentRound]);
 
     // "Your Turn" notification flash
     useEffect(() => {
@@ -188,16 +211,27 @@ const Game: React.FC<Props> = ({
     };
 
     const isCardPlayableNormally = (card: any) => {
-        return card.color === 'wild' || card.color === topCard.color || card.value === topCard.value;
+        if (card.color === 'wild') return true;
+        if (card.color === topCard.color) return true;
+        if (card.value === topCard.value) return true;
+        // Stacking logic for variations
+        if (card.value.includes('Skip') && topCard.value.includes('Skip')) return true;
+        if (card.value.includes('Reverse') && topCard.value.includes('Reverse')) return true;
+        return false;
     };
 
     const isCardPlayableInWar = (card: any) => {
-        if (card.value === 'Draw2') {
-            return topCard.value === 'Draw2' || (topCard.value === 'Draw4' && gameState.rules?.allowDraw2OnDraw4);
+        const isTwo = card.value.includes('2');
+        const isFour = card.value.includes('4');
+        const topIsFour = topCard.value.includes('4');
+
+        if (isTwo && (!topIsFour || gameState.rules?.allowDraw2OnDraw4)) {
+            if (topIsFour && gameState.rules?.draw2OnDraw4ColorMatch) {
+                return card.color === topCard.color;
+            }
+            return true;
         }
-        if (card.value === 'Draw4') {
-            return topCard.value === 'Draw4' || (topCard.value === 'Draw2' && gameState.rules?.allowDraw4OnDraw2);
-        }
+        if (isFour && (topIsFour || gameState.rules?.allowDraw4OnDraw2)) return true;
         return false;
     };
 
@@ -221,19 +255,51 @@ const Game: React.FC<Props> = ({
 
     const handleConfirm = () => {
         const lastCard = selection[selection.length - 1];
+        const projectedHandSize = me.hand.length - selection.length;
+        const isUno = !!(autoUnoActive && projectedHandSize === 1);
+
         if (lastCard.color === 'wild') {
             setShowColorPicker(true);
+        } else if (lastCard.value.includes('Target')) {
+            setTargetSelection(selection);
+            setShowTargetPicker(true);
+            setSelection([]);
         } else {
-            onPlaySequence(selection.map(s => s.id));
+            onPlaySequence(selection.map(s => s.id), undefined, isUno);
             setSelection([]);
         }
     };
 
     const selectColor = (color: string) => {
-        // Clear UI state immediately before network wait
+        const lastCard = selection[selection.length - 1];
+        const projectedHandSize = me.hand.length - selection.length;
+        const isUno = !!(autoUnoActive && projectedHandSize === 1);
+
+        if (lastCard.value.includes('Target')) {
+            setPendingColor(color);
+            setTargetSelection(selection);
+            setShowTargetPicker(true);
+            setSelection([]);
+            setShowColorPicker(false);
+        } else {
+            // Clear UI state immediately before network wait
+            setSelection([]);
+            setShowColorPicker(false);
+            onPlaySequence(selection.map(s => s.id), color, isUno);
+        }
+    };
+
+    const selectTarget = (targetUserId: string) => {
+        const projectedHandSize = me.hand.length - targetSelection.length;
+        const isUno = !!(autoUnoActive && projectedHandSize === 1);
+
+        onPlaySequence(targetSelection.map(s => s.id), pendingColor, isUno, targetUserId);
+
+        // Reset states
         setSelection([]);
-        setShowColorPicker(false);
-        onPlaySequence(selection.map(s => s.id), color);
+        setTargetSelection([]);
+        setPendingColor(undefined);
+        setShowTargetPicker(false);
     };
 
     const cancelColorSelection = () => {
@@ -388,18 +454,25 @@ const Game: React.FC<Props> = ({
                     <div className="my-hand-container">
                         <div className="hand-controls compact">
                             <div className="control-group-left">
-                                <button className="neo-button toggle-btn-inline" onClick={handleToggleHand} disabled={isMyTurn}>
+                                <button className="arena-control-btn" onClick={handleToggleHand} disabled={isMyTurn}>
                                     {isHandMinimized ? '👁️ SHOW' : '🙈 HIDE'}
                                 </button>
-                                <button className="neo-button sort-btn small" onClick={handleAutoSort}>⚡ SORT</button>
+                                <button className="arena-control-btn" onClick={handleAutoSort}>⚡ SORT</button>
+                                <button
+                                    className={`arena-control-btn ${autoUnoActive ? 'active' : ''}`}
+                                    onClick={() => setAutoUnoActive(!autoUnoActive)}
+                                    title="Auto-declare UNO! when playing your second-to-last card."
+                                >
+                                    {autoUnoActive ? '🟢 AUTO UNO' : '⚪ AUTO UNO'}
+                                </button>
                                 {isMyTurn && gameState.drewThisTurn && selection.length === 0 && (
-                                    <button className="neo-button pass-btn-inline" onClick={onPassTurn}>🚀 PASS</button>
+                                    <button className="arena-control-btn danger-btn" onClick={onPassTurn}>🚀 PASS</button>
                                 )}
                                 {hasUnoToSay && (
-                                    <button className="neo-button uno-btn pulse" onClick={onDeclareUno}>📣 UNO!</button>
+                                    <button className="arena-control-btn pulse-btn" onClick={onDeclareUno}>📣 UNO!</button>
                                 )}
                                 {canCallNoUno && (
-                                    <button className="neo-button nouno-btn pulse" onClick={onCallNoUno}>🚫 NO UNO!</button>
+                                    <button className="arena-control-btn danger-btn" onClick={onCallNoUno}>🚫 NO UNO!</button>
                                 )}
                             </div>
                             <span className={`player-name-label ${showYourTurn ? 'your-turn-active pulse' : ''}`}>
@@ -615,6 +688,14 @@ const Game: React.FC<Props> = ({
                                                             <div key={i} className={`mini-card ${c.color}`}>{c.value}</div>
                                                         ))}
                                                     </div>
+                                                    {action.details && (
+                                                        <div className="action-metadata">
+                                                            {action.details.revCount > 0 && <span>REVERSED</span>}
+                                                            {action.details.skipCount > 0 && <span>SKIPPED</span>}
+                                                            {action.details.isStackingAction && <span>STACKED!</span>}
+                                                            {action.details.hitCount > 0 && !action.details.isStackingAction && <span>HIT ALL!</span>}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <span className="action-draw text-accent">drew {action.count} card{action.count > 1 ? 's' : ''}</span>
@@ -664,6 +745,41 @@ const Game: React.FC<Props> = ({
                 )}
             </AnimatePresence>
 
+            {/* Target Picker Modal */}
+            <AnimatePresence>
+                {showTargetPicker && (
+                    <motion.div
+                        className="modal-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className="color-picker glass target-picker"
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                        >
+                            <h3>SELECT TARGET</h3>
+                            <div className="target-options">
+                                {gameState.players
+                                    .filter((p: any) => p.userId !== myId && !p.isSpectator)
+                                    .map((p: any) => (
+                                        <button
+                                            key={p.userId}
+                                            className="neo-button target-player-btn"
+                                            onClick={() => selectTarget(p.userId)}
+                                        >
+                                            <span className="player-name-text">{p.name}</span>
+                                            <span className="card-count-tag">{p.hand.length} cards</span>
+                                        </button>
+                                    ))}
+                            </div>
+                            <button className="neo-button secondary cancel-picker-btn" onClick={() => { setShowTargetPicker(false); setSelection([]); }}>CANCEL</button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Challenge Draw 4 Modal */}
             <AnimatePresence>
                 {gameState.pendingChallenge && gameState.pendingChallenge.victimId === myId && (
@@ -695,7 +811,7 @@ const Game: React.FC<Props> = ({
 
             {/* Round Summary Modal (Tournament) */}
             <AnimatePresence>
-                {gameState.status === 'round_end' && (
+                {(gameState.status === 'round_end' || gameState.status === 'finished') && (
                     <motion.div
                         className="modal-backdrop"
                         initial={{ opacity: 0 }}
@@ -703,12 +819,22 @@ const Game: React.FC<Props> = ({
                         exit={{ opacity: 0 }}
                     >
                         <motion.div
-                            className="summary-modal glass"
+                            className="summary-modal glass transparent-modal"
                             initial={{ y: 50, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                         >
-                            <h2 className="glitch-text-sm">ROUND OVER</h2>
+                            <h2 className="glitch-text-sm">{gameState.status === 'finished' ? 'CHAMPION DECLARED' : 'ROUND COMPLETE'}</h2>
+                            <div className="winner-announcement">
+                                <div className="winner-label">WINNER</div>
+                                <div className="winner-name-highlight">{gameState.lastWinnerName || 'Someone'}</div>
+                            </div>
+
                             <div className="summary-content">
+                                {roundCountdown !== null && (
+                                    <div className="auto-timer">
+                                        Next round in <span className="timer-val">{roundCountdown}s</span>
+                                    </div>
+                                )}
                                 {gameState.lastEliminated && (
                                     <div className="elimination-alert">
                                         <span className="name">{gameState.lastEliminated}</span> ELIMINATED
@@ -727,14 +853,23 @@ const Game: React.FC<Props> = ({
                                         </div>
                                     </div>
                                 )}
-                                <div className="loading-bar-container">
-                                    <small>Preparing next round...</small>
-                                    <motion.div
-                                        className="loading-bar"
-                                        initial={{ width: 0 }}
-                                        animate={{ width: "100%" }}
-                                        transition={{ duration: 3 }}
-                                    />
+                                <div className="readiness-section">
+                                    <button
+                                        className={`neo-button continue-btn ${gameState.readyPlayers?.[myId] ? 'ready' : ''}`}
+                                        onClick={onPlayerReady}
+                                    >
+                                        {gameState.readyPlayers?.[myId] ? 'WAITING...' : 'CONTINUE'}
+                                    </button>
+                                    <div className="ready-dots">
+                                        {gameState.players.filter((p: any) => !p.isBot).map((p: any) => (
+                                            <div
+                                                key={p.userId}
+                                                className={`ready-dot ${gameState.readyPlayers?.[p.userId] ? 'active' : ''}`}
+                                                title={`${p.name} is ${gameState.readyPlayers?.[p.userId] ? 'ready' : 'not ready'}`}
+                                            />
+                                        ))}
+                                    </div>
+                                    <small className="hint">Host + Majority vote to continue</small>
                                 </div>
                             </div>
                         </motion.div>
@@ -779,8 +914,8 @@ const Game: React.FC<Props> = ({
 
                             <div className="game-over-controls">
                                 {gameState.hostUserId === myId ? (
-                                    <button className="neo-button confirm-play" onClick={onResetToLobby}>
-                                        RETURN TO LOBBY // REPLAY
+                                    <button className="neo-button confirm-play" onClick={onPlayerReady}>
+                                        {gameState.readyPlayers?.[myId] ? 'WAITING FOR OTHERS...' : 'RETURN TO LOBBY // READY'}
                                     </button>
                                 ) : (
                                     <p className="waiting-hint">Waiting for host to reset room...</p>

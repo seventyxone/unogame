@@ -1,17 +1,61 @@
 const { rooms, getIo } = require('../state');
 const { nextPlayerIndex, handleWin } = require('../utils/gameCore');
+
+const refillDeckIfNeeded = (room) => {
+    if (room.deck.length > 0) return;
+    if (room.discardPile.length <= 1) return; // Cannot refill if nothing to shuffle
+
+    const top = room.discardPile.pop();
+    const deck = [...room.discardPile];
+
+    // Fisher-Yates Shuffle
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    room.deck = deck.map(c => {
+        if (c.originalColor === 'wild') {
+            return { ...c, color: 'wild', originalColor: undefined };
+        }
+        return c;
+    });
+    room.discardPile = [top];
+    console.log(`[DECK] Reshuffled ${room.deck.length} cards into the deck.`);
+};
 // Lazy load botService
 const getBotService = () => require('./botService');
 
-const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
+const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUno, targetUserId) => {
     const room = rooms.get(roomId);
     const io = getIo();
     if (!room) return;
 
     const player = room.players[room.currentPlayerIndex];
     if (player.userId !== playerId) {
-        // Silent reject — user clicked during opponent's turn, not a real error
         return;
+    }
+
+    if (isUno) {
+        player.saidUno = true;
+        console.log(`[UNO] ${player.name} declared UNO! during play sequence.`);
+    }
+
+    // AUTO-PENALTY CHECK: If anyone (NOT the current player who is about to play) 
+    // has 1 card and hasn't said UNO, they are caught now as the window closes.
+    if (room.rules?.requireUnoDeclaration) {
+        const missedUnos = room.players.filter(p => !p.isSpectator && p.userId !== player.userId && p.hand.length === 1 && !p.saidUno);
+        if (missedUnos.length > 0) {
+            missedUnos.forEach(target => {
+                const penalty = room.deck.splice(0, 2);
+                target.hand.push(...penalty);
+                target.saidUno = false;
+                console.log(`[UNO] AUTO-PENALTY: ${target.name} caught by turn skip. +2 Cards.`);
+            });
+            // We don't stop the play, but we do update the room state and maybe notify?
+            // Usually, room.lastAction will be overwritten by the play action below, 
+            // so we might want to log a mini-event or just let it slide since it's "auto".
+        }
     }
 
     if (cardIds.length > 1 && !room.rules?.multiPlay) {
@@ -47,17 +91,19 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
 
     if (isStacking) {
         if (room.rules?.drawWar) {
-            if (cards[0].value === 'Draw2' || cards[0].value === 'Draw4') {
-                if (cards[0].value === 'Draw2') {
-                    if (topCard.value === 'Draw2' || (topCard.value === 'Draw4' && room.rules?.allowDraw2OnDraw4)) {
-                        if (topCard.value === 'Draw4' && room.rules?.draw2OnDraw4ColorMatch) {
-                            if (cards[0].color === topCard.color) canPlayFirst = true;
-                        } else {
-                            canPlayFirst = true;
-                        }
+            if (cards[0].value.includes('Draw2') || cards[0].value.includes('Hit2') || cards[0].value.includes('Draw4') || cards[0].value.includes('Hit4')) {
+                const isTwo = cards[0].value.includes('2');
+                const isFour = cards[0].value.includes('4');
+                const stackValue = topCard.value.includes('4') ? 4 : 2;
+
+                if (isTwo && (stackValue === 2 || (stackValue === 4 && room.rules?.allowDraw2OnDraw4))) {
+                    if (stackValue === 4 && room.rules?.draw2OnDraw4ColorMatch) {
+                        if (cards[0].color === topCard.color) canPlayFirst = true;
+                    } else {
+                        canPlayFirst = true;
                     }
-                } else if (cards[0].value === 'Draw4') {
-                    if (topCard.value === 'Draw4' || (topCard.value === 'Draw2' && room.rules?.allowDraw4OnDraw2)) canPlayFirst = true;
+                } else if (isFour && (stackValue === 4 || (stackValue === 2 && room.rules?.allowDraw4OnDraw2))) {
+                    canPlayFirst = true;
                 }
             }
         } else {
@@ -65,6 +111,11 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
         }
     } else {
         canPlayFirst = cards[0].color === 'wild' || cards[0].color === topCard.color || cards[0].value === topCard.value || (topCard.originalColor && cards[0].color === topCard.color);
+        // Custom stacking check for variations
+        if (!canPlayFirst) {
+            if (cards[0].value.includes('Skip') && topCard.value.includes('Skip')) canPlayFirst = true;
+            if (cards[0].value.includes('Reverse') && topCard.value.includes('Reverse')) canPlayFirst = true;
+        }
     }
 
     if (!canPlayFirst) {
@@ -80,8 +131,14 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
 
     if (cards.length > 1) {
         for (let i = 1; i < cards.length; i++) {
-            if (cards[i].value !== cards[0].value) {
-                if (socketId) io.to(socketId).emit('error', 'Multi-played cards must be the same value!');
+            const v1 = cards[0].value;
+            const vi = cards[i].value;
+            const valuesMatch = v1 === vi ||
+                (v1.includes('Skip') && vi.includes('Skip')) ||
+                (v1.includes('Reverse') && vi.includes('Reverse'));
+
+            if (!valuesMatch) {
+                if (socketId) io.to(socketId).emit('error', 'Multi-played cards must be a compatible value!');
                 if (!socketId) {
                     console.log(`[BOT ERROR] Bot tried illegal multi move. Forcing pass.`);
                     room.currentPlayerIndex = nextPlayerIndex(room);
@@ -93,21 +150,101 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
         }
     }
 
-    let totalDraw = 0, revCount = 0, skipCount = 0;
+    let totalDraw = 0, revCount = 0, skipCount = 0, hitAllValue = 0;
+    const discardAllBatch = [];
+
     cards.forEach((card, index) => {
         const idx = player.hand.findIndex(c => c.id === card.id);
         player.hand.splice(idx, 1);
+
         if (card.color === 'wild') {
             card.originalColor = 'wild';
-            card.color = newColor || 'red'; // Set all wild tiles in this sequence to chosen color
+            card.color = newColor || 'red';
         }
+
+        // Action Logic
+        if (card.value === 'Reverse' || card.value === 'WildReverse') revCount++;
+        if (card.value === 'Skip' || card.value === 'WildSkip') skipCount++;
+
+        if (card.value.includes('Draw2')) totalDraw += 2;
+        if (card.value.includes('Draw4')) totalDraw += 4;
+
+        if (card.value.includes('Hit2')) hitAllValue += 2;
+        if (card.value.includes('Hit4')) hitAllValue += 4;
+
+        if (card.value.includes('DiscardAll')) {
+            const targetColor = card.color;
+            // IMPORTANT: Only discard cards of the EXACT match color, 
+            // and NEVER include other Wild cards in the generic purge.
+            const toDiscard = player.hand.filter(c => c.color === targetColor && c.color !== 'wild');
+            toDiscard.forEach(c => {
+                const cIdx = player.hand.findIndex(h => h.id === c.id);
+                player.hand.splice(cIdx, 1);
+                discardAllBatch.push(c);
+            });
+        }
+
+        if (card.value.includes('SkipAll')) {
+            skipCount = room.players.length - 1;
+        }
+
+        // Rule: A player can NEVER skip themselves. 
+        // We cap the skipCount so that the cycle doesn't land back on the perpetrator 
+        // unless they intended to (e.g. Skip All).
+        // Since the turn moves to next player FIRST, skipCount=N-1 means "Return to me".
+        // skipCount=N would mean "Skip me and go to player 2".
+        if (skipCount >= room.players.length) {
+            skipCount = room.players.length - 1;
+        }
+
+        // Push main card last for DiscardAll batches to ensure it's on top
+        if (card.value.includes('DiscardAll')) {
+            discardAllBatch.forEach(c => room.discardPile.push(c));
+        }
+
+        // Targeted Draw Logic
+        if (card.value.includes('TargetDraw')) {
+            const amount = card.value.includes('4') ? 4 : 2;
+            const target = room.players.find(p => p.userId === targetUserId);
+            if (target) {
+                while (room.deck.length < amount && room.discardPile.length > 1) {
+                    refillDeckIfNeeded(room);
+                }
+                const drawn = room.deck.splice(0, amount);
+                target.hand.push(...drawn);
+                target.saidUno = false;
+
+                // Track targeting for UI history
+                action.details = action.details || {};
+                action.details.targetName = target.name;
+                action.details.targetAmount = amount;
+            }
+        }
+
         room.discardPile.push(card);
-        // Removed the truncation limit to allow full deck refill
-        if (card.value === 'Draw2') totalDraw += 2;
-        if (card.value === 'Draw4') totalDraw += 4;
-        if (card.value === 'Reverse') revCount++;
-        if (card.value === 'Skip') skipCount++;
     });
+
+    // Apply Effects: Draw War (Stacking/Contribute) vs Global Hit (Ping)
+    if (room.rules?.drawWar && isStacking) {
+        // High Intensity Stack: Convert Hit-All into Stack Growth
+        if (hitAllValue > 0) {
+            totalDraw += hitAllValue;
+            hitAllValue = 0; // Negated global effect for local war escalation
+        }
+    } else if (hitAllValue > 0) {
+        // Standard Ping: Everyone else draws immediately
+        room.players.forEach(p => {
+            if (p.userId !== player.userId && !p.isSpectator) {
+                while (room.deck.length < hitAllValue && room.discardPile.length > 1) {
+                    refillDeckIfNeeded(room);
+                }
+                const drawn = room.deck.splice(0, hitAllValue);
+                p.hand.push(...drawn);
+                p.saidUno = false;
+            }
+        });
+        // hitAllValue is NOT added to pendingDrawCount here, so no war is started
+    }
 
     room.skippedPlayers = []; // RESET for every play
     let isSpecialReverse = room.rules?.specialReverse && (revCount >= 2 || (room.players.length === 2 && revCount > 0));
@@ -122,9 +259,17 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
         type: 'play',
         userId: player.userId,
         userName: player.name,
-        sequence: cards.map(c => ({ ...c })),
+        sequence: [...cards, ...discardAllBatch].map(c => ({ ...c })),
         specialReverse: isSpecialReverse,
-        skippedPlayers: []
+        isAutoUno: isUno,
+        skippedPlayers: [],
+        details: {
+            revCount,
+            skipCount,
+            hitCount: hitAllValue,
+            totalDrawAmount: totalDraw,
+            isStackingAction: isStacking && (totalDraw > 0 || hitAllValue > 0)
+        }
     };
 
     room.playHistory = room.playHistory || [];
@@ -197,13 +342,27 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
             return; // STOP HERE - Wait for victim to accept or challenge
         }
 
+        const currentTop = room.discardPile[room.discardPile.length - 1];
         const hasResponse = room.rules?.drawWar && nextP.hand.some(c => {
-            if (c.value === 'Draw2' && (room.discardPile[room.discardPile.length - 1].value === 'Draw2' || room.rules?.allowDraw2OnDraw4)) return true;
-            if (c.value === 'Draw4' && (room.discardPile[room.discardPile.length - 1].value === 'Draw4' || room.rules?.allowDraw4OnDraw2)) return true;
+            const isTwo = c.value.includes('2');
+            const isFour = c.value.includes('4');
+            const topIsFour = currentTop.value.includes('4');
+
+            if (isTwo && (!topIsFour || room.rules?.allowDraw2OnDraw4)) {
+                if (topIsFour && room.rules?.draw2OnDraw4ColorMatch) {
+                    return c.color === currentTop.color;
+                }
+                return true;
+            }
+            if (isFour && (topIsFour || room.rules?.allowDraw4OnDraw2)) return true;
             return false;
         });
 
         if (!hasResponse) {
+            console.log(`[WAR] ${nextP.name} has no response to stack of ${room.pendingDrawCount}. Drawing.`);
+            while (room.deck.length < room.pendingDrawCount && room.discardPile.length > 1) {
+                refillDeckIfNeeded(room);
+            }
             const drawn = room.deck.splice(0, room.pendingDrawCount);
             const targetPlayer = room.players[room.currentPlayerIndex];
             targetPlayer.hand.push(...drawn);
@@ -251,6 +410,12 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
         }
     }
 
+    // Only reset saidUno if they have MORE than 1 card.
+    // If they have exactly 1, we keep the flag if they just said it.
+    if (player.hand.length > 1) {
+        player.saidUno = false;
+    }
+
     if (player.hand.length === 0) {
         if (room.rules.gameMode === 'tournament') {
             room.finishedPlayers = room.finishedPlayers || [];
@@ -273,9 +438,6 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
         getBotService().checkBotTurn(roomId);
     }
 
-    // Reset saidUno if they have more than 1 card, or just reset on every play to force re-declaration
-    player.saidUno = false;
-
     // Bot UNO logic: 95% chance to say it after a 1.5s delay
     if (room.rules?.requireUnoDeclaration && player.isBot && player.hand.length === 1) {
         setTimeout(() => {
@@ -293,7 +455,18 @@ const performDrawCard = (roomId, playerId) => {
     if (!room) return;
     const player = room.players[room.currentPlayerIndex];
     if (player.userId !== playerId) {
-        return; // Guard against acting out of turn (fixes bot deadlock sync issue)
+        return;
+    }
+
+    // AUTO-PENALTY CHECK
+    if (room.rules?.requireUnoDeclaration) {
+        const missedUnos = room.players.filter(p => !p.isSpectator && p.userId !== player.userId && p.hand.length === 1 && !p.saidUno);
+        missedUnos.forEach(target => {
+            refillDeckIfNeeded(room);
+            const penalty = room.deck.splice(0, 2);
+            target.hand.push(...penalty);
+            target.saidUno = false;
+        });
     }
 
     // Guard against multiple draws in one turn
@@ -305,6 +478,10 @@ const performDrawCard = (roomId, playerId) => {
     room.drewThisTurn = true;
 
     if (room.pendingDrawCount > 0) {
+        // Ensure deck has enough cards for the penalty
+        while (room.deck.length < room.pendingDrawCount && room.discardPile.length > 1) {
+            refillDeckIfNeeded(room);
+        }
         const drawn = room.deck.splice(0, room.pendingDrawCount);
         player.hand.push(...drawn);
         const action = {
@@ -324,23 +501,14 @@ const performDrawCard = (roomId, playerId) => {
         room.drewThisTurn = false;
         room.currentPlayerIndex = nextPlayerIndex(room);
     } else {
-        if (room.deck.length === 0) {
-            const top = room.discardPile.pop();
-            // Fisher-Yates Shuffle for robust randomness
-            const deck = [...room.discardPile];
-            for (let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-            room.deck = deck.map(c => {
-                if (c.originalColor === 'wild') {
-                    return { ...c, color: 'wild', originalColor: undefined };
-                }
-                return c;
-            });
-            room.discardPile = [top];
-        }
+        refillDeckIfNeeded(room);
         const drawnCard = room.deck.shift();
+        if (!drawnCard) {
+            console.error("[SERVER ERROR] Deck empty after refill attempt.");
+            room.currentPlayerIndex = nextPlayerIndex(room);
+            io.to(roomId).emit('game_update', room);
+            return;
+        }
         player.hand.push(drawnCard);
         const action = {
             id: Date.now(),
@@ -399,6 +567,9 @@ const handleAcceptChallenge = (roomId, userId) => {
         return;
     }
 
+    while (room.deck.length < 4 && room.discardPile.length > 1) {
+        refillDeckIfNeeded(room);
+    }
     const drawn = room.deck.splice(0, 4);
     targetPlayer.hand.push(...drawn);
 
@@ -451,6 +622,9 @@ const handleChallengeDraw4 = (roomId, userId) => {
 
     const penaltyUser = hasMatch ? attacker : victim;
     const cardCount = hasMatch ? 4 : 6;
+    while (room.deck.length < cardCount && room.discardPile.length > 1) {
+        refillDeckIfNeeded(room);
+    }
     const drawn = room.deck.splice(0, cardCount);
     penaltyUser.hand.push(...drawn);
 

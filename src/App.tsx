@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
 import Lobby from './components/Lobby';
@@ -21,6 +21,77 @@ const socket = io(SOCKET_URL, {
   }
 });
 
+const deckDescriptions: Record<string, string> = {
+  'Skip': 'Skips the next player (x4 per color).',
+  'Reverse': 'Reverses rotation direction (x4 per color).',
+  'Draw2': 'Next player draws 2 (x4 per color).',
+  'Wild': 'Changes color to choice (Exact quantity).',
+  'Draw4': 'Wild: Color + Draw 4 (Exact quantity).',
+  'DiscardAll': 'Purge all of one color (x4 per color).',
+  'ColorHit2': 'Everyone else draws 2 (x4 per color).',
+  'ColorHit4': 'Everyone else draws 4 (x4 per color).',
+  'ColorDraw4': 'Next player draws 4 (x4 per color).',
+  'SkipAll': 'Extra turn (x4 per color).',
+  'WildDiscardAll': 'Wild: Purge color (Exact quantity).',
+  'WildHit2': 'Wild: Everyone draws 2 (Exact quantity).',
+  'WildHit4': 'Wild: Everyone draws 4 (Exact quantity).',
+  'WildDraw2': 'Wild: Next player draws 2 (Exact quantity).',
+  'WildSkipAll': 'Wild: Extra turn (Exact quantity).',
+  'WildSkip': 'Wild: Skip next player (Exact quantity).',
+  'WildReverse': 'Wild: Reverse direction (Exact quantity).',
+  'TargetDraw2': 'Targeted: Pick a player to draw 2 (x4 per color).',
+  'TargetDraw4': 'Targeted: Pick a player to draw 4 (x4 per color).',
+  'WildTargetDraw2': 'Wild Targeted: Pick a player to draw 2 (Exact quantity).',
+  'WildTargetDraw4': 'Wild Targeted: Pick a player to draw 4 (Exact quantity).'
+};
+
+const CardPreview: React.FC<{ cardKey: string }> = ({ cardKey }) => {
+  const colors = ['red', 'blue', 'green', 'yellow'];
+  const [currentColor, setCurrentColor] = useState('red');
+  const isWild = cardKey.includes('Wild') || cardKey === 'Draw4' || cardKey.includes('WildDraw2');
+
+  useEffect(() => {
+    if (isWild) return;
+
+    let timeoutId: any;
+    const tick = () => {
+      setCurrentColor(prev => {
+        const otherColors = colors.filter(c => c !== prev);
+        return otherColors[Math.floor(Math.random() * otherColors.length)];
+      });
+      timeoutId = setTimeout(tick, Math.random() * 2500 + 1500); // 1.5s - 4s intervals
+    };
+
+    timeoutId = setTimeout(tick, Math.random() * 2000);
+    return () => clearTimeout(timeoutId);
+  }, [isWild]);
+
+  let icon = cardKey;
+  if (cardKey.includes('Hit')) {
+    icon = '💥' + (cardKey.includes('4') ? '+4' : '+2');
+  } else if (cardKey.includes('Draw4')) {
+    icon = '+4';
+  } else if (cardKey.includes('Draw2')) {
+    icon = '+2';
+  } else if (cardKey.includes('SkipAll')) {
+    icon = '🚫👥';
+  } else if (cardKey.includes('Skip')) {
+    icon = '🚫';
+  } else if (cardKey.includes('Reverse')) {
+    icon = '⇄';
+  } else if (cardKey.includes('DiscardAll')) {
+    icon = '🗑️';
+  } else if (cardKey.includes('Target')) {
+    icon = '🎯';
+  }
+
+  return (
+    <div className={`deck-mini-preview ${isWild ? 'wild' : currentColor}`}>
+      <span style={{ fontSize: icon.length > 2 ? '0.7rem' : '0.9rem' }}>{icon}</span>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [roomId, setRoomId] = useState<string>('');
   const [joined, setJoined] = useState(false);
@@ -34,6 +105,7 @@ const App: React.FC = () => {
   });
 
   const [activeEvent, setActiveEvent] = useState<{ id: number, type: string, count?: number } | null>(null);
+  const hasAttemptedRestore = useRef<string | null>(null);
 
   // Game Event Listener for Global Announcements
   useEffect(() => {
@@ -56,6 +128,19 @@ const App: React.FC = () => {
         }
       } else if (values.includes('Reverse')) {
         eventType = 'REVERSE';
+      } else if (action.details?.hitCount > 0 && !action.details?.isStackingAction) {
+        eventType = 'HIT ALL';
+        eventCount = action.details.hitCount;
+      } else if (action.details?.isStackingAction) {
+        eventType = 'STACKED!';
+        eventCount = (action.details.hitCount || 0) + (action.details.totalDrawAmount || 0);
+      } else if (values.some((v: string) => v.includes('DiscardAll'))) {
+        eventType = 'DISCARD ALL';
+        eventCount = action.sequence.length;
+      }
+
+      if (action.isAutoUno) {
+        eventType = 'AUTO UNO!';
       }
 
       const warResult = action.warResult;
@@ -102,7 +187,10 @@ const App: React.FC = () => {
     });
 
     socket.on('game_over', (data: any) => {
-      setGameState((prev: any) => ({ ...prev, status: 'finished', results: data }));
+      setGameState((prev: any) => {
+        const base = data.room || prev || {};
+        return { ...base, status: 'finished', results: data };
+      });
     });
 
     socket.on('error', (msg: string) => {
@@ -120,19 +208,37 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // If we're the host and in a lobby, push our preferred rules if they differ
-    if (gameState?.status === 'lobby' && gameState.hostUserId === userId) {
+    if (gameState?.status === 'lobby' && gameState.hostUserId === userId && roomId) {
+      if (hasAttemptedRestore.current === roomId) return;
+
       const saved = localStorage.getItem('uno_custom_rules');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
           const currentRules = gameState.rules || {};
+
+          // Ensure new card keys exist in the parsed rules from storage
+          const defaultDeckKeys = {
+            'DiscardAll': 0, 'ColorHit2': 0, 'ColorHit4': 0, 'ColorDraw4': 0, 'SkipAll': 0, 'TargetDraw2': 0, 'TargetDraw4': 0,
+            'WildDiscardAll': 0, 'WildHit2': 0, 'WildHit4': 0, 'WildDraw2': 0, 'WildSkipAll': 0, 'WildTargetDraw2': 0, 'WildTargetDraw4': 0, 'WildSkip': 0, 'WildReverse': 0
+          };
+          if (parsed.deckConfig) {
+            parsed.deckConfig = { ...defaultDeckKeys, ...parsed.deckConfig };
+          }
+
           const hasDiff = JSON.stringify(parsed) !== JSON.stringify(currentRules);
-          // Only sync if the server rules are empty (initial join) 
-          // to prevent overwriting manual UI changes during the session.
-          if (hasDiff && Object.keys(currentRules).length === 0) {
+
+          if (hasDiff) {
+            console.log("[App] Restoring saved rules from localStorage...");
             socket.emit('update_rules', { roomId, rules: parsed, userId });
           }
-        } catch (e) { console.error(e); }
+          hasAttemptedRestore.current = roomId;
+        } catch (e) {
+          console.error(e);
+          hasAttemptedRestore.current = roomId;
+        }
+      } else {
+        hasAttemptedRestore.current = roomId;
       }
 
       const savedAi = localStorage.getItem('uno_ai_count');
@@ -144,7 +250,7 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [gameState?.status, gameState?.hostUserId, userId]);
+  }, [gameState?.status, gameState?.hostUserId, userId, roomId]);
   const joinRoom = (id: string, name: string) => {
     setRoomId(id);
     socket.emit('join_room', { roomId: id, playerName: name, userId });
@@ -156,9 +262,9 @@ const App: React.FC = () => {
     socket.emit('start_game', { roomId, userId });
   };
 
-  const playSequence = (cardIds: string[], newColor?: string) => {
-    console.log(`[App] Emitting play_sequence: Room=${roomId}, Cards=${JSON.stringify(cardIds)}`);
-    socket.emit('play_sequence', { roomId, cardIds, newColor, userId });
+  const playSequence = (cardIds: string[], newColor?: string, isUno?: boolean) => {
+    console.log(`[App] Emitting play_sequence: Room=${roomId}, Cards=${JSON.stringify(cardIds)}, isUno=${isUno}`);
+    socket.emit('play_sequence', { roomId, cardIds, newColor, userId, isUno });
   };
 
   const updateRules = (rules: any) => {
@@ -458,19 +564,58 @@ const App: React.FC = () => {
                 </div>
 
                 <h3 className="section-title">DECK COMPOSITION</h3>
-                <div className="deck-grid">
-                  {Object.entries(gameState.rules?.deckConfig || {}).map(([key, val]: [string, any]) => (
-                    <label key={key} className="deck-item">
-                      <span>{key}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        disabled={gameState.hostUserId !== userId}
-                        value={val}
-                        onChange={(e) => updateRules({ deckConfig: { [key]: parseInt(e.target.value) } })}
-                      />
-                    </label>
-                  ))}
+                <div className="deck-grid-premium">
+                  {Object.entries(gameState.rules?.deckConfig || {})
+                    .sort(([a], [b]) => {
+                      const isNumA = !isNaN(parseInt(a));
+                      const isNumB = !isNaN(parseInt(b));
+                      const isWildA = a.startsWith('Wild') || a === 'Draw4' || a === 'WildDraw2' || a === 'Wild';
+                      const isWildB = b.startsWith('Wild') || b === 'Draw4' || b === 'WildDraw2' || b === 'Wild';
+
+                      // Wilds always at bottom
+                      if (isWildA && !isWildB) return 1;
+                      if (!isWildA && isWildB) return -1;
+
+                      // Numbers vs Specials
+                      if (isNumA && !isNumB) return -1;
+                      if (!isNumA && isNumB) return 1;
+
+                      // Numeric sort
+                      if (isNumA && isNumB) return parseInt(a) - parseInt(b);
+
+                      // Alphabetical internal sort
+                      return a.localeCompare(b);
+                    })
+                    .map(([key, val]: [string, any]) => (
+                      <div key={key} className="deck-item-premium">
+                        <div className="deck-item-left">
+                          <CardPreview cardKey={key} />
+                          <div className="deck-item-info">
+                            <span className="card-name">{key}</span>
+                            <small className="card-desc">
+                              {deckDescriptions[key] || 'Classic numeric card.'}
+                            </small>
+                          </div>
+                        </div>
+                        <div className="deck-item-controls">
+                          <button
+                            className="count-btn"
+                            disabled={gameState.hostUserId !== userId || (val || 0) <= 0}
+                            onClick={() => updateRules({ deckConfig: { [key]: Math.max(0, (val || 0) - 1) } })}
+                          >
+                            -
+                          </button>
+                          <span className="count-val">{val || 0}</span>
+                          <button
+                            className="count-btn"
+                            disabled={gameState.hostUserId !== userId}
+                            onClick={() => updateRules({ deckConfig: { [key]: (val || 0) + 1 } })}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                 </div>
                 {gameState.hostUserId === userId && (
                   <button
@@ -479,7 +624,9 @@ const App: React.FC = () => {
                     onClick={() => updateRules({
                       deckConfig: {
                         '0': 1, '1': 2, '2': 2, '3': 2, '4': 2, '5': 2, '6': 2, '7': 2, '8': 2, '9': 2,
-                        'Skip': 2, 'Reverse': 2, 'Draw2': 2, 'Wild': 4, 'Draw4': 4
+                        'Skip': 2, 'Reverse': 2, 'Draw2': 2, 'Wild': 4, 'Draw4': 4,
+                        'DiscardAll': 0, 'ColorHit2': 0, 'ColorHit4': 0, 'ColorDraw4': 0, 'SkipAll': 0, 'TargetDraw2': 0, 'TargetDraw4': 0,
+                        'WildDiscardAll': 0, 'WildHit2': 0, 'WildHit4': 0, 'WildDraw2': 0, 'WildSkipAll': 0, 'WildTargetDraw2': 0, 'WildTargetDraw4': 0, 'WildSkip': 0, 'WildReverse': 0
                       }
                     })}
                   >
@@ -514,7 +661,7 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-      ) : (gameState?.status === 'playing' || gameState?.status === 'finished') ? (
+      ) : (gameState?.status === 'playing' || gameState?.status === 'round_end' || gameState?.status === 'finished') ? (
         <Game
           gameState={gameState}
           myId={userId}
@@ -525,7 +672,7 @@ const App: React.FC = () => {
           onChallengeDraw4={() => socket.emit('challenge_draw4', { roomId, userId })}
           onDeclareUno={() => socket.emit('declare_uno', { roomId, userId })}
           onCallNoUno={() => socket.emit('call_no_uno', { roomId, userId })}
-          onResetToLobby={() => socket.emit('reset_to_lobby', { roomId, userId })}
+          onPlayerReady={() => socket.emit('player_ready_continue', { roomId, userId })}
         />
       ) : (
         <div className="loading">Connecting to the Matrix...</div>

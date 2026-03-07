@@ -18,10 +18,10 @@ const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden
     const getColor = (color: string) => {
         if (hidden) return 'linear-gradient(135deg, #1e293b, #0f172a)';
         switch (color) {
-            case 'red': return '#ff3b3b';
-            case 'blue': return '#3b82f6';
-            case 'green': return '#22c55e';
-            case 'yellow': return '#eab308';
+            case 'red': return 'var(--uno-red, #ff3b3b)';
+            case 'blue': return 'var(--uno-blue, #3b82f6)';
+            case 'green': return 'var(--uno-green, #22c55e)';
+            case 'yellow': return 'var(--uno-yellow, #eab308)';
             case 'wild': return 'linear-gradient(45deg, #ff3b3b, #3b82f6, #22c55e, #eab308)';
             default: return '#333';
         }
@@ -47,17 +47,37 @@ const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden
                 <div className="card-center hidden-logo"></div>
             ) : (
                 <>
-                    <div className="card-corner top-left">{card.value}</div>
+                    <div className="card-corner top-left">
+                        {card.value.includes('4') ? '+4' :
+                            card.value.includes('2') && !card.value.match(/^[02]$/) ? '+2' :
+                                card.value.includes('SkipAll') ? '🚫👥' :
+                                    card.value.includes('Skip') ? '🚫' :
+                                        card.value.includes('Reverse') ? '⇄' :
+                                            card.value.includes('DiscardAll') ? '🗑️' :
+                                                card.value}
+                    </div>
                     <div className="card-center-ellipse">
                         <div className="center-value" style={{ color: card.color === 'wild' ? '#a855f7' : getColor(card.color) }}>
-                            {card.value === 'Draw4' ? '+4' :
-                                card.value === 'Draw2' ? '+2' :
-                                    card.value === 'Skip' ? '🚫' :
-                                        card.value === 'Reverse' ? '⇄' :
-                                            card.value}
+                            {card.value.includes('Target') ? '🎯' :
+                                card.value.includes('Hit') ? '💥' + (card.value.includes('4') ? '+4' : '+2') :
+                                    card.value.includes('Draw4') ? '+4' :
+                                        card.value.includes('Draw2') ? '+2' :
+                                            card.value.includes('SkipAll') ? '🚫👥' :
+                                                card.value.includes('Skip') ? '🚫' :
+                                                    card.value.includes('Reverse') ? '⇄' :
+                                                        card.value.includes('DiscardAll') ? '🗑️' :
+                                                            card.value}
                         </div>
                     </div>
-                    <div className="card-corner bottom-right">{card.value}</div>
+                    <div className="card-corner bottom-right">
+                        {card.value.includes('4') ? '+4' :
+                            card.value.includes('2') && !card.value.match(/^[02]$/) ? '+2' :
+                                card.value.includes('SkipAll') ? '🚫👥' :
+                                    card.value.includes('Skip') ? '🚫' :
+                                        card.value.includes('Reverse') ? '⇄' :
+                                            card.value.includes('DiscardAll') ? '🗑️' :
+                                                card.value}
+                    </div>
                 </>
             )}
             <div className="card-gloss"></div>
