@@ -121,10 +121,16 @@ io.on('connection', (socket) => {
     console.log(`[Server] Received start_game for room ${roomId} from user ${userId}`);
     const room = rooms.get(roomId);
     if (room && room.hostUserId === userId) {
+      if (room.status !== 'lobby' && room.status !== 'finished') {
+        console.log(`[Server] Start ignored: Game already in progress (Status: ${room.status})`);
+        return;
+      }
       console.log(`[Server] Room found and host verified. Starting game...`);
-      room.currentRound = 1;
-      room.scores = {};
-      room.winners = [];
+      if (room.currentRound === 1 || room.status === 'finished') {
+        room.currentRound = 1;
+        room.scores = {};
+        room.winners = [];
+      }
       startGameInternal(roomId);
     } else {
       console.log(`[Server] Start failed: RoomExists=${!!room}, HostMatch=${room?.hostUserId === userId}`);

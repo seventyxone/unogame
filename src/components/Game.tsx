@@ -29,7 +29,7 @@ const MiniHand: React.FC<{ hand: any[], active?: boolean }> = ({ hand, active })
                 return (
                     <motion.div
                         key={card.id}
-                        layoutId={card.id}
+                        layoutId={`card-${card.id}`}
                         className="mini-card-wrapper"
                         initial={{ scale: 0, opacity: 0, y: 50 }}
                         animate={{
@@ -45,6 +45,24 @@ const MiniHand: React.FC<{ hand: any[], active?: boolean }> = ({ hand, active })
                     </motion.div>
                 );
             })}
+        </div>
+    );
+};
+
+const LiveScoreboard: React.FC<{ gameState: any }> = ({ gameState }) => {
+    if (gameState.rules?.gameMode !== 'points' || !gameState.scores) return null;
+
+    return (
+        <div className="live-scoreboard-container">
+            <div className="scoreboard-header">POINTS MODE // LEADERBOARD</div>
+            <div className="scoreboard-list">
+                {gameState.players.map((p: any) => (
+                    <div key={p.userId} className={`scoreboard-row ${gameState.scores[p.userId] >= (gameState.rules.maxRounds || 3) ? 'near-win' : ''}`}>
+                        <span className="p-name">{p.name}</span>
+                        <span className="p-score">{gameState.scores[p.userId] || 0} / {gameState.rules.maxRounds || 3}</span>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };
@@ -269,6 +287,9 @@ const Game: React.FC<Props> = ({
                 {showHistory ? '✕' : '📋'}
             </button>
 
+            {/* Live Standings during game */}
+            <LiveScoreboard gameState={gameState} />
+
             {/* Spectator Global Badge */}
             <AnimatePresence>
                 {me.isSpectator && (
@@ -398,12 +419,12 @@ const Game: React.FC<Props> = ({
                                 </div>
 
                                 <div className="discard-pile-cluster" onClick={() => setShowHistory(!showHistory)}>
-                                    <AnimatePresence>
+                                    <AnimatePresence mode="popLayout">
                                         {gameState.discardPile.slice(-5).map((card: any, idx: number) => (
                                             <motion.div
-                                                key={card.id}
+                                                key={`${card.id}-${idx}`}
                                                 className="discarded-card-physical"
-                                                initial={{ scale: 0, opacity: 0, rotate: 180 }}
+                                                initial={{ scale: 0.5, opacity: 0, rotate: 90 }}
                                                 animate={{
                                                     scale: 1,
                                                     opacity: 1,
@@ -412,6 +433,7 @@ const Game: React.FC<Props> = ({
                                                     y: getOffsetById(card.id).y,
                                                     zIndex: idx
                                                 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
                                                 transition={{ type: "spring", stiffness: 200, damping: 20 }}
                                             >
                                                 <UnoCard card={card} />
