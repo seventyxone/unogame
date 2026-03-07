@@ -37,7 +37,7 @@ const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden
             className={`uno-card ${isSmall ? 'small' : ''} ${disabled ? 'disabled' : ''} ${hidden ? 'hidden-card' : ''} ${highlight ? 'highlight-glow' : ''}`}
             style={{
                 background: getColor(card.color),
-                boxShadow: hidden ? 'none' : `0 10px 30px rgba(0,0,0,0.5), 0 0 20px ${card.color === 'wild' ? '#a855f7' : getColor(card.color)}33`,
+                boxShadow: hidden ? 'none' : `0 4px 12px rgba(0,0,0,0.4)`,
                 border: hidden ? '1px solid rgba(255,255,255,0.2)' : '4px solid #fff',
             }}
             onClick={!disabled ? onClick : undefined}

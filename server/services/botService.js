@@ -15,7 +15,7 @@ const checkBotTurn = (roomId) => {
 
         // Determine delay based on state
         const isChallenge = room.pendingChallenge && room.pendingChallenge.victimId === curr.userId;
-        const delay = isChallenge ? 1500 : 1200;
+        const delay = isChallenge ? 2500 : 3000; // Increased from 1.5s/1.2s to 2.5s/3.0s
 
         setTimeout(() => {
             try {

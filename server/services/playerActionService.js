@@ -130,7 +130,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
     room.lastAction = action;
 
     room.pendingDrawCount += totalDraw;
-    let extraTurn = room.rules?.specialReverse && revCount >= 2;
+    let extraTurn = room.rules?.specialReverse && revCount >= 2 && player.hand.length > 0;
 
     if (revCount % 2 !== 0) {
         if (room.players.length === 2) {
@@ -231,7 +231,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
                 c.color === 'wild' || c.color === topCard.color || c.value === topCard.value || (topCard.originalColor && c.color === topCard.color)
             );
 
-            if (room.rules?.playAfterPenalty && hasPlayable && !targetPlayer.isBot) {
+            if (room.rules?.playAfterPenalty && hasPlayable && !targetPlayer.isBot && targetPlayer.hand.length > 0) {
                 room.drewThisTurn = true; // Let player choose to play or pass
             } else {
                 room.drewThisTurn = false;

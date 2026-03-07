@@ -81,7 +81,10 @@ const Game: React.FC<Props> = ({
     const [showHistory, setShowHistory] = useState<boolean>(false);
     const [animatedHand, setAnimatedHand] = useState<any[]>([]);
     const [isHandMinimized, setIsHandMinimized] = useState<boolean>(false);
-    const [autoHidePreference, setAutoHidePreference] = useState<boolean>(true);
+    const [autoHidePreference, setAutoHidePreference] = useState<boolean>(() => {
+        const saved = localStorage.getItem('uno_autohide_hand');
+        return saved === 'true'; // Default to false if not present ('true' !== undefined)
+    });
     const scrollRef = React.useRef<HTMLDivElement>(null);
 
     // Sequential Hand Loading Engine — preserves user drag order
@@ -122,6 +125,7 @@ const Game: React.FC<Props> = ({
         // If the user manually shows the hand (nextState = false), disable auto-hiding globally for this session
         // If the user manually hides the hand (nextState = true), enable auto-hiding logic
         setAutoHidePreference(nextState);
+        localStorage.setItem('uno_autohide_hand', nextState.toString());
     };
 
     const isCardPlayableNormally = (card: any) => {
