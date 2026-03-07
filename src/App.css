@@ -1974,8 +1974,8 @@ input:disabled {
 
 @media (max-height: 600px) and (orientation: landscape) {
   :root {
-    --card-width: 45px !important;
-    --card-height: 67px !important;
+    --card-width: 55px !important;
+    --card-height: 82px !important;
     --hand-overlap: -25px !important;
   }
 
@@ -1984,8 +1984,8 @@ input:disabled {
   }
 
   .board-center {
-    transform: scale(0.55) rotateX(0deg) !important;
-    margin-top: 50px !important;
+    transform: scale(0.6) rotateX(0deg) !important;
+    margin-top: 40px !important;
     gap: 15px !important;
   }
 
@@ -2007,8 +2007,12 @@ input:disabled {
   }
 
   .hand-command-center {
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 20%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
-    padding-top: 2px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 15%, rgba(0, 0, 0, 0.2) 40%, transparent 100%);
+    padding-top: 0px;
+  }
+
+  .direction-indicator {
+    font-size: 0.8rem !important;
   }
 
   .my-hand-wrapper {
@@ -2016,7 +2020,8 @@ input:disabled {
   }
 
   .selection-zone {
-    bottom: 90px !important;
-    transform: translateX(-50%) scale(0.8) !important;
+    bottom: 50px !important;
+    transform: translateX(-50%) scale(0.65) !important;
+    z-index: 3000 !important;
   }
 }
