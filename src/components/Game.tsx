@@ -609,6 +609,25 @@ const Game: React.FC<Props> = ({
                             <h1 className="glitch-text">CHAMPION</h1>
                             <div className="winner-name">{gameState.results?.winner}</div>
 
+                            {gameState.results?.mode === 'points' && gameState.results?.scores && (
+                                <div className="final-scoreboard standings-summary">
+                                    <h3>FINAL SCOREBOARD</h3>
+                                    <div className="standings-list">
+                                        {Object.entries(gameState.results.scores)
+                                            .sort(([, a]: any, [, b]: any) => b - a)
+                                            .map(([uid, score]: any) => {
+                                                const p = gameState.players.find((pl: any) => pl.userId === uid);
+                                                return (
+                                                    <div key={uid} className="standing-entry">
+                                                        <span className="name">{p?.name || 'Player'}</span>
+                                                        <span className="score">{score} WINS</span>
+                                                    </div>
+                                                );
+                                            })}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="game-over-controls">
                                 {gameState.hostUserId === myId ? (
                                     <button className="neo-button confirm-play" onClick={onResetToLobby}>

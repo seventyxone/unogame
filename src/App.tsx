@@ -248,15 +248,14 @@ const App: React.FC = () => {
                     </select>
                   </label>
                   {gameState.rules?.gameMode === 'points' && (
-                    <label className="rule-item" title="Total rounds to play before declaring a point-based winner (1-10).">
+                    <label className="rule-item" title="Score or rounds required to end the session.">
                       <div className="rule-label-group">
-                        <span>Max Rounds</span>
-                        <small>Session Duration</small>
+                        <span>{gameState.rules?.gameMode === 'points' ? 'Target Wins' : 'Max Rounds'}</span>
+                        <small>{gameState.rules?.gameMode === 'points' ? 'Score to reach' : 'Session Duration'}</small>
                       </div>
                       <input
                         type="number"
                         min="1"
-                        max="10"
                         disabled={gameState.hostUserId !== userId}
                         value={gameState.rules?.maxRounds || 3}
                         onChange={(e) => updateRules({ maxRounds: parseInt(e.target.value) })}
