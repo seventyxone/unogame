@@ -78,7 +78,6 @@ const Game: React.FC<Props> = ({
     const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
     const [showHistory, setShowHistory] = useState<boolean>(false);
     const [animatedHand, setAnimatedHand] = useState<any[]>([]);
-    const [activeEvent, setActiveEvent] = useState<{ id: number, type: string, count?: number } | null>(null);
     const [isHandMinimized, setIsHandMinimized] = useState<boolean>(false);
     const [autoHidePreference, setAutoHidePreference] = useState<boolean>(true);
     const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -101,49 +100,6 @@ const Game: React.FC<Props> = ({
         }
     }, [me?.hand]);
 
-    // Game Event Listener for Zoom Effects
-    useEffect(() => {
-        if (!gameState.lastAction || !gameState.lastAction.id) return;
-        const action = gameState.lastAction;
-
-        let eventType = '';
-        let eventCount = 0;
-
-        if (action.type === 'play') {
-            const values = action.sequence.map((c: any) => c.value);
-            const skips = action.skippedPlayers || [];
-
-            if (skips.length > 0) {
-                if (action.specialReverse) {
-                    eventType = 'EXTRA TURN!';
-                } else {
-                    const names = skips.map((s: any) => s.name.split(' ')[0]); // Use first names/short names
-                    eventType = names.join(' & ') + ' SKIPPED';
-                }
-            } else if (values.includes('Reverse')) {
-                eventType = 'REVERSE';
-            }
-
-            // Handle merged War Result (Draw + Play)
-            if (action.warResult) {
-                eventType = 'DRAW';
-                eventCount = action.warResult.count;
-            }
-        } else if (action.type === 'draw') {
-            eventType = 'DRAW';
-            eventCount = action.count;
-        } else if (action.type === 'challenge_result') {
-            eventType = action.result === 'success' ? 'EXPOSED!' : 'INNOCENT!';
-            if (action.penaltyCount) eventCount = action.penaltyCount;
-        }
-
-        if (eventType) {
-            setActiveEvent({ id: action.id, type: eventType, count: eventCount });
-            // Snappy 800ms cooldown
-            const timer = setTimeout(() => setActiveEvent(null), 850);
-            return () => clearTimeout(timer);
-        }
-    }, [gameState.lastAction?.id]);
 
     // Auto-minimize hand logic
     useEffect(() => {
@@ -596,24 +552,6 @@ const Game: React.FC<Props> = ({
                 )}
             </AnimatePresence>
 
-            {/* Game Announcements - Fixed to Screen Center */}
-            <AnimatePresence mode="wait">
-                {activeEvent && (
-                    <motion.div
-                        key={activeEvent.id}
-                        className="event-zoom-container"
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1.1, opacity: 1 }}
-                        exit={{ scale: 1.5, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                    >
-                        <div className="event-zoom-text">{activeEvent.type}</div>
-                        {activeEvent.count && (activeEvent.type === 'draw' || activeEvent.count > 0) && (
-                            <div className="event-zoom-sub">+{activeEvent.count} CARDS</div>
-                        )}
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 };

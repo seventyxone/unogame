@@ -393,10 +393,30 @@ const handleAcceptChallenge = (roomId, userId) => {
     };
     room.playHistory.push(room.lastAction);
     room.pendingDrawCount = 0;
+    const attacker = room.players.find(p => p.userId === challenge.attackerId);
     room.currentPlayerIndex = nextPlayerIndex(room);
 
     io.to(roomId).emit('game_update', room);
-    getBotService().checkBotTurn(roomId);
+
+    // Final win check if the attacker finished on this Wild Draw 4
+    if (attacker && attacker.hand.length === 0) {
+        if (room.rules.gameMode === 'tournament') {
+            room.finishedPlayers = room.finishedPlayers || [];
+            if (!room.finishedPlayers.includes(attacker.userId)) {
+                room.finishedPlayers.push(attacker.userId);
+            }
+            const activeCount = room.players.filter(p => !room.finishedPlayers.includes(p.userId)).length;
+            if (activeCount === 1) {
+                handleWin(roomId, attacker);
+            } else {
+                getBotService().checkBotTurn(roomId);
+            }
+        } else {
+            handleWin(roomId, attacker);
+        }
+    } else {
+        getBotService().checkBotTurn(roomId);
+    }
 };
 
 const handleChallengeDraw4 = (roomId, userId) => {
@@ -432,7 +452,26 @@ const handleChallengeDraw4 = (roomId, userId) => {
     }
 
     io.to(roomId).emit('game_update', room);
-    getBotService().checkBotTurn(roomId);
+
+    // Final win check for the attacker (they might have zero cards if the challenge failed/succeeded)
+    if (attacker.hand.length === 0) {
+        if (room.rules.gameMode === 'tournament') {
+            room.finishedPlayers = room.finishedPlayers || [];
+            if (!room.finishedPlayers.includes(attacker.userId)) {
+                room.finishedPlayers.push(attacker.userId);
+            }
+            const activeCount = room.players.filter(p => !room.finishedPlayers.includes(p.userId)).length;
+            if (activeCount === 1) {
+                handleWin(roomId, attacker);
+            } else {
+                getBotService().checkBotTurn(roomId);
+            }
+        } else {
+            handleWin(roomId, attacker);
+        }
+    } else {
+        getBotService().checkBotTurn(roomId);
+    }
 };
 
 module.exports = {

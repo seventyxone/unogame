@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
+import { motion, AnimatePresence } from 'framer-motion';
 import Lobby from './components/Lobby';
 import Game from './components/Game';
 import './App.css';
@@ -31,6 +32,51 @@ const App: React.FC = () => {
     localStorage.setItem('uno_user_id', fresh);
     return fresh;
   });
+
+  const [activeEvent, setActiveEvent] = useState<{ id: number, type: string, count?: number } | null>(null);
+
+  // Game Event Listener for Global Announcements
+  useEffect(() => {
+    if (!gameState?.lastAction || !gameState.lastAction.id) return;
+    const action = gameState.lastAction;
+
+    let eventType = '';
+    let eventCount = 0;
+
+    if (action.type === 'play') {
+      const values = action.sequence.map((c: any) => c.value);
+      const skips = action.skippedPlayers || [];
+
+      if (skips.length > 0) {
+        if (action.specialReverse) {
+          eventType = 'EXTRA TURN!';
+        } else {
+          const names = skips.map((s: any) => s.name.split(' ')[0]);
+          eventType = names.join(' & ') + ' SKIPPED';
+        }
+      } else if (values.includes('Reverse')) {
+        eventType = 'REVERSE';
+      }
+
+      const warResult = action.warResult;
+      if (warResult) {
+        eventType = 'DRAW';
+        eventCount = warResult.count;
+      }
+    } else if (action.type === 'draw') {
+      eventType = 'DRAW';
+      eventCount = action.count;
+    } else if (action.type === 'challenge_result') {
+      eventType = action.result === 'success' ? 'EXPOSED!' : 'INNOCENT!';
+      if (action.penaltyCount) eventCount = action.penaltyCount;
+    }
+
+    if (eventType) {
+      setActiveEvent({ id: action.id, type: eventType, count: eventCount });
+      const timer = setTimeout(() => setActiveEvent(null), 850);
+      return () => clearTimeout(timer);
+    }
+  }, [gameState?.lastAction?.id]);
 
   useEffect(() => {
     // Cleanup any existing listeners first to prevent duplicates
@@ -418,6 +464,25 @@ const App: React.FC = () => {
       ) : (
         <div className="loading">Connecting to the Matrix...</div>
       )}
+
+      {/* Global Announcements - Outside perspective container */}
+      <AnimatePresence mode="wait">
+        {activeEvent && (
+          <motion.div
+            key={activeEvent.id}
+            className="event-zoom-container"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1.1, opacity: 1 }}
+            exit={{ scale: 1.5, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+          >
+            <div className="event-zoom-text">{activeEvent.type}</div>
+            {activeEvent.count !== undefined && (activeEvent.type === 'DRAW' || activeEvent.count > 0) && (
+              <div className="event-zoom-sub">+{activeEvent.count} CARDS</div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

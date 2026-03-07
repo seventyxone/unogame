@@ -2087,17 +2087,13 @@ input:disabled {
 /* Game Event Animations - Now relative to the board-center */
 .event-zoom-container {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 20000;
+  inset: 0;
+  z-index: 100000;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100vw;
-  height: 100vh;
 }
 
 .event-zoom-text {
