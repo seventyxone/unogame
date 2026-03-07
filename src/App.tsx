@@ -5,7 +5,15 @@ import Game from './components/Game';
 import './App.css';
 import './Challenge.css';
 
-const SOCKET_URL = import.meta.env.VITE_SERVER_URL || `http://${window.location.hostname}:3001`;
+// Allow overriding the server URL via the ?server= URL parameter
+const urlParams = new URLSearchParams(window.location.search);
+const customServer = urlParams.get('server');
+const isGitHubPages = window.location.hostname.includes('github.io');
+const defaultServer = isGitHubPages
+  ? 'https://your-ngrok-url.ngrok-free.app' // Fallback for GH pages if no parameter is provided
+  : `http://${window.location.hostname}:3001`; // Local network
+
+const SOCKET_URL = customServer || import.meta.env.VITE_SERVER_URL || defaultServer;
 const socket = io(SOCKET_URL);
 
 const App: React.FC = () => {
