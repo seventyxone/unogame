@@ -189,7 +189,7 @@ const App: React.FC = () => {
             <div className="lobby-summary glass">
               <span>Humans: {gameState.players.filter((p: any) => !p.isBot).length}</span>
               <span className="accent">AI Bots: {gameState.players.filter((p: any) => p.isBot).length}</span>
-              <span>Total: {gameState.players.length}/8</span>
+              <span>Total: {gameState.players.length} Players</span>
             </div>
             <div className="debug-id-bar">
               Your Session: <span className="id-val">{userId.slice(0, 8)}...</span> |
@@ -262,7 +262,7 @@ const App: React.FC = () => {
                       />
                     </label>
                   )}
-                  <label className="rule-item" title="Add elite AI agents to the table (max 8 players total).">
+                  <label className="rule-item" title="Add elite AI agents to the table. No limits on player count.">
                     <div className="rule-label-group">
                       <span>AI Opponents</span>
                       <small>Add synthetic players</small>
