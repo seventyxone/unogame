@@ -5,12 +5,18 @@
   --uno-yellow: #eab308;
 }
 
+* {
+  box-sizing: border-box;
+  user-select: none;
+}
+
 html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
   height: 100%;
   background: #000;
+  font-family: 'Inter', sans-serif;
 }
 
 .App {
@@ -22,6 +28,81 @@ html, body {
   background: radial-gradient(circle at center, #1e293b 0%, #000 100%);
 }
 
+.lobby-screen {
+  padding: 2rem;
+  width: 95vw;
+  max-width: 800px;
+  margin: 2rem auto;
+  text-align: center;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.title span {
+  color: var(--uno-red);
+}
+
+.neo-button {
+  background: var(--uno-blue);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.neo-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
+}
+
+.waiting-room {
+  width: 98%;
+  max-width: 1400px;
+  margin: 1rem auto;
+  padding: 2rem;
+}
+
+.rooms-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.rule-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(0,0,0,0.2);
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+}
+
+.rule-label-group span {
+  display: block;
+  font-weight: bold;
+  color: #fff;
+}
+
+.rule-label-group small {
+  color: #94a3b8;
+}
+
 .game-screen {
   width: 100%;
   height: 100%;
@@ -29,33 +110,6 @@ html, body {
   overflow: hidden;
 }
 
-.table-arena {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.discard-pile-cluster {
-  position: relative;
-  width: 120px;
-  height: 180px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-
-.discarded-card-physical {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  transform-origin: center;
-}
-
-/* Live Scoreboard Styling */
 .live-scoreboard-container {
   position: absolute;
   top: 20px;
@@ -68,7 +122,6 @@ html, body {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   min-width: 240px;
   z-index: 1000;
-  pointer-events: none;
 }
 
 .scoreboard-header {
@@ -88,57 +141,211 @@ html, body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.scoreboard-row:last-child {
-  border-bottom: none;
-}
-
-.scoreboard-last {
-  border-bottom: none;
-}
-
-.scoreboard-row.near-win .p-score {
-  color: #ffcc00;
-  text-shadow: 0 0 15px rgba(255, 204, 0, 0.4);
-  font-weight: 900;
-}
-
-.p-name {
-  color: #f8fafc;
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.p-score {
-  color: #60a5fa;
-  font-weight: 800;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-/* Fix for screen jiggle/growth */
-* {
-  box-sizing: border-box;
-}
-
-.arena-background {
+.p-name { color: #f8fafc; font-weight: 700; }
+.p-score { color: #60a5fa; font-weight: 800; font-family: monospace; }
+/* Fanned Hand & Player Seats */
+.my-hand-container {
   position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  padding: 1rem;
+  z-index: 1000;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
 }
 
+.hand-command-center {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.hand-command-center.minimized {
+  transform: translateY(85%);
+}
+
+.my-hand {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 200px;
+}
+
+.player-card-wrapper {
+  margin-left: -50px;
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+
+.player-card-wrapper:first-child { margin-left: 0; }
+
+.player-card-wrapper:hover {
+  transform: translateY(-30px) scale(1.1);
+  z-index: 2000 !important;
+}
+
+.table-seat {
+  position: absolute;
+  transition: all 0.5s ease;
+}
+
+.opponent-tag {
+  background: rgba(15, 23, 42, 0.9);
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Battle Arena & Center */
 .main-battle-area {
-  position: relative;
-  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
 }
 
-/* End of Game/Round Modals */
-.modal-overlay, .modal-backdrop, .game-over-overlay {
+.piles-row {
+  display: flex;
+  gap: 3rem;
+  align-items: center;
+}
+
+.deck-pile {
+  width: 120px;
+  height: 180px;
+  cursor: pointer;
+}
+
+.deck-card.back {
+  width: 100%;
+  height: 100%;
+  background: var(--uno-red);
+  border: 6px solid #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+.draw-warning {
+  position: absolute;
+  top: -40px;
+  background: var(--uno-red);
+  color: #fff;
+  padding: 0.4rem 1rem;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* Modals & Overlays */
+.modal-overlay, .game-over-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(10px);
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(12px);
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 5000;
+}
+
+.color-picker {
+  padding: 2.5rem;
+  text-align: center;
+}
+
+.color-options {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.color-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 4px solid #fff;
+  transition: transform 0.2s;
+}
+
+.color-btn:hover { transform: scale(1.1); }
+.color-btn.red { background: var(--uno-red); }
+.color-btn.blue { background: var(--uno-blue); }
+.color-btn.green { background: var(--uno-green); }
+.color-btn.yellow { background: var(--uno-yellow); }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .rooms-grid { grid-template-columns: 1fr; }
+  .title { font-size: 2rem; }
+  .player-card-wrapper { margin-left: -60px; }
+}
+/* High-Precision Card Fanning */
+.reorder-hand {
+  display: flex !important;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  perspective: 2000px;
+}
+
+.player-card-wrapper {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Nametag Overlay Logic */
+.opponent-tag.isometric {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%) rotateX(20deg);
+  background: var(--uno-blue);
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  z-index: 100;
+  white-space: nowrap;
+}
+
+/* Event Zoom Overlay */
+.event-zoom-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 20000;
+}
+
+.event-zoom-text {
+  font-size: 6rem;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 30px rgba(255, 255, 255, 0.8), 5px 5px 0 var(--uno-red);
+  letter-spacing: 12px;
+  text-transform: uppercase;
+}
+
+.event-zoom-sub {
+  font-size: 2rem;
+  color: var(--uno-yellow);
+  font-weight: 800;
+  margin-top: -1rem;
+}
+
+/* Discard Pile Stacking */
+.discard-pile-cluster {
+  perspective: 1000px;
+}
+
+.discarded-card-physical {
+  box-shadow: 2px 4px 12px rgba(0,0,0,0.4);
 }
