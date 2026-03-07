@@ -3,8 +3,9 @@ import io from 'socket.io-client';
 import Lobby from './components/Lobby';
 import Game from './components/Game';
 import './App.css';
+import './Challenge.css';
 
-const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || `http://${window.location.hostname}:3001`;
 const socket = io(SOCKET_URL);
 
 const App: React.FC = () => {
@@ -38,10 +39,12 @@ const App: React.FC = () => {
       setGameState(room);
     });
 
-    socket.on('game_over', ({ winner }) => {
-      alert(`Game Over! Winner: ${winner}`);
-      setGameState(null);
-      setJoined(false);
+    socket.on('game_over', (data: any) => {
+      setGameState((prev: any) => ({ ...prev, status: 'finished', results: data }));
+    });
+
+    socket.on('error', (msg: string) => {
+      alert(`Move Rejected: ${msg}`);
     });
 
     return () => {
@@ -49,9 +52,41 @@ const App: React.FC = () => {
       socket.off('game_start');
       socket.off('game_update');
       socket.off('game_over');
+      socket.off('error');
     };
   }, []);
 
+  // Removed aggressive auto-save useEffect to prevent overwriting custom rules on refresh.
+  useEffect(() => {
+    // If we're the host and in a lobby, push our preferred rules if they differ
+    if (gameState?.status === 'lobby' && gameState.hostUserId === userId) {
+      const saved = localStorage.getItem('uno_custom_rules');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          const currentRules = gameState.rules || {};
+
+          // Check for meaningful differences including deckConfig
+          const hasDiff = JSON.stringify(parsed) !== JSON.stringify(currentRules);
+
+          if (hasDiff) {
+            updateRules(parsed);
+          }
+        } catch (e) {
+          console.error("Failed to parse saved rules", e);
+        }
+      }
+
+      const savedAi = localStorage.getItem('uno_ai_count');
+      if (savedAi) {
+        const count = parseInt(savedAi, 10);
+        const currentAi = gameState.players.filter((p: any) => p.isBot).length;
+        if (count >= 1 && count <= 7 && count !== currentAi) {
+          socket.emit('set_bot_count', { roomId, count, userId });
+        }
+      }
+    }
+  }, [gameState?.status, gameState?.hostUserId, userId]);
   const joinRoom = (id: string, name: string) => {
     setRoomId(id);
     socket.emit('join_room', { roomId: id, playerName: name, userId });
@@ -59,6 +94,7 @@ const App: React.FC = () => {
   };
 
   const startGame = () => {
+    console.log(`[App] Emitting start_game for Room=${roomId}, User=${userId}`);
     socket.emit('start_game', { roomId, userId });
   };
 
@@ -68,7 +104,16 @@ const App: React.FC = () => {
   };
 
   const updateRules = (rules: any) => {
-    socket.emit('update_rules', { roomId, rules, userId });
+    // Deep merge new rules into existing state
+    const newRules = { ...gameState?.rules, ...rules };
+    if (rules.deckConfig) {
+      newRules.deckConfig = { ...gameState?.rules?.deckConfig, ...rules.deckConfig };
+    }
+
+    if (gameState?.hostUserId === userId) {
+      localStorage.setItem('uno_custom_rules', JSON.stringify(newRules));
+    }
+    socket.emit('update_rules', { roomId, rules: newRules, userId });
   };
 
   const drawCard = () => {
@@ -114,8 +159,11 @@ const App: React.FC = () => {
               <div className="rule-settings glass">
                 <h3 className="section-title">GAME ARCHITECTURE</h3>
                 <div className="settings-grid">
-                  <label className="rule-item">
-                    <span>Game Mode</span>
+                  <label className="rule-item" title="Standard: First to win ends game. Tournament (LMS): Eliminated players watch until one champion remains. Points: Lowest total hand count wins.">
+                    <div className="rule-label-group">
+                      <span>Game Mode</span>
+                      <small>Championship Formats</small>
+                    </div>
                     <select
                       disabled={gameState.hostUserId !== userId}
                       value={gameState.rules?.gameMode || 'standard'}
@@ -127,8 +175,11 @@ const App: React.FC = () => {
                     </select>
                   </label>
                   {gameState.rules?.gameMode === 'points' && (
-                    <label className="rule-item">
-                      <span>Max Rounds</span>
+                    <label className="rule-item" title="Total rounds to play before declaring a point-based winner (1-10).">
+                      <div className="rule-label-group">
+                        <span>Max Rounds</span>
+                        <small>Session Duration</small>
+                      </div>
                       <input
                         type="number"
                         min="1"
@@ -139,19 +190,29 @@ const App: React.FC = () => {
                       />
                     </label>
                   )}
-                  <label className="rule-item">
-                    <span>AI Opponents (1-7)</span>
+                  <label className="rule-item" title="Add elite AI agents to the table (max 8 players total).">
+                    <div className="rule-label-group">
+                      <span>AI Opponents</span>
+                      <small>Add synthetic players</small>
+                    </div>
                     <input
                       type="number"
                       min="1"
                       max="7"
                       disabled={gameState.hostUserId !== userId}
                       value={gameState.players.filter((p: any) => p.isBot).length}
-                      onChange={(e) => socket.emit('set_bot_count', { roomId, count: parseInt(e.target.value), userId })}
+                      onChange={(e) => {
+                        const count = parseInt(e.target.value);
+                        localStorage.setItem('uno_ai_count', count.toString());
+                        socket.emit('set_bot_count', { roomId, count, userId });
+                      }}
                     />
                   </label>
-                  <label className="rule-item">
-                    <span>Starting Hand Size</span>
+                  <label className="rule-item" title="Initial cards dealt to each player at the start of the round (1-25).">
+                    <div className="rule-label-group">
+                      <span>Starting Hand Size</span>
+                      <small>Initial tactical loadout</small>
+                    </div>
                     <input
                       type="number"
                       min="1"
@@ -161,8 +222,11 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ startingHandSize: parseInt(e.target.value) })}
                     />
                   </label>
-                  <label className="rule-item">
-                    <span>Draw War</span>
+                  <label className="rule-item" title="Force draw wars where +2 and +4 can be stacked to punish the next player.">
+                    <div className="rule-label-group">
+                      <span>Draw War</span>
+                      <small>Stack +2/+4 to increase penalty</small>
+                    </div>
                     <input
                       type="checkbox"
                       disabled={gameState.hostUserId !== userId}
@@ -170,8 +234,11 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ drawWar: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item">
-                    <span>Multi-Play</span>
+                  <label className="rule-item" title="Allow playing multiple cards of the same number/value in one turn.">
+                    <div className="rule-label-group">
+                      <span>Multi-Play</span>
+                      <small>Play same-value cards together</small>
+                    </div>
                     <input
                       type="checkbox"
                       disabled={gameState.hostUserId !== userId}
@@ -179,8 +246,47 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ multiPlay: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item" style={{ opacity: gameState.rules?.drawWar ? 1 : 0.5 }}>
-                    <span>Draw 4 on Draw 2</span>
+                  <label className="rule-item" title="If you draw a card because you had no move, play it immediately if it's legal.">
+                    <div className="rule-label-group">
+                      <span>Play After Draw</span>
+                      <small>Play drawn card if it matches</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.allowPlayAfterDraw ?? true}
+                      onChange={(e) => updateRules({ allowPlayAfterDraw: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="Always allowed to draw, but can only pass turn after drawing one.">
+                    <div className="rule-label-group">
+                      <span>Forced Draw/Pass</span>
+                      <small>Must draw to pass if no move</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.forcedDrawPass ?? false}
+                      onChange={(e) => updateRules({ forcedDrawPass: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="If you draw multiple cards from a +2 or +4, you can still play a legal card immediately.">
+                    <div className="rule-label-group">
+                      <span>Play After Penalty</span>
+                      <small>Play even after draw-wars</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.playAfterPenalty ?? false}
+                      onChange={(e) => updateRules({ playAfterPenalty: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="Allows stacking +4 on top of a +2 penalty." style={{ opacity: gameState.rules?.drawWar ? 1 : 0.5 }}>
+                    <div className="rule-label-group">
+                      <span>Draw 4 on Draw 2</span>
+                      <small>Aggressive stacking</small>
+                    </div>
                     <input
                       type="checkbox"
                       disabled={gameState.hostUserId !== userId || !gameState.rules?.drawWar}
@@ -188,8 +294,11 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ allowDraw4OnDraw2: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item" style={{ opacity: gameState.rules?.drawWar ? 1 : 0.5 }}>
-                    <span>Draw 2 on Draw 4</span>
+                  <label className="rule-item" title="Allows stacking +2 on top of a +4 penalty." style={{ opacity: gameState.rules?.drawWar ? 1 : 0.5 }}>
+                    <div className="rule-label-group">
+                      <span>Draw 2 on Draw 4</span>
+                      <small>Recursive penalty logic</small>
+                    </div>
                     <input
                       type="checkbox"
                       disabled={gameState.hostUserId !== userId || !gameState.rules?.drawWar}
@@ -197,13 +306,28 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ allowDraw2OnDraw4: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item">
-                    <span>Special Reverse</span>
+                  <label className="rule-item" title="Consecutive Reverse plays grant the player an extra turn.">
+                    <div className="rule-label-group">
+                      <span>Special Reverse</span>
+                      <small>Tactical momentum</small>
+                    </div>
                     <input
                       type="checkbox"
                       disabled={gameState.hostUserId !== userId}
                       checked={gameState.rules?.specialReverse ?? true}
                       onChange={(e) => updateRules({ specialReverse: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="If enabled, players can challenge a Wild Draw 4. If the attacker had a legal colored card, they draw 4 instead. If not, the victim draws 6.">
+                    <div className="rule-label-group">
+                      <span>Challenge Rule</span>
+                      <small>Official Uno mechanic</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.challengeRule ?? true}
+                      onChange={(e) => updateRules({ challengeRule: e.target.checked })}
                     />
                   </label>
                 </div>
@@ -266,12 +390,15 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-      ) : gameState?.status === 'playing' ? (
+      ) : (gameState?.status === 'playing' || gameState?.status === 'finished') ? (
         <Game
           gameState={gameState}
           myId={userId}
           onPlaySequence={playSequence}
           onDrawCard={drawCard}
+          onPassTurn={() => socket.emit('pass_turn', { roomId, userId })}
+          onAcceptChallenge={() => socket.emit('accept_draw4', { roomId, userId })}
+          onChallengeDraw4={() => socket.emit('challenge_draw4', { roomId, userId })}
         />
       ) : (
         <div className="loading">Connecting to the Matrix...</div>

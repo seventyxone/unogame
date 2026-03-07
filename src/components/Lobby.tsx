@@ -6,7 +6,7 @@ interface Props {
 
 const Lobby: React.FC<Props> = ({ onJoin }) => {
     const [roomId, setRoomId] = useState('');
-    const [name, setName] = useState('');
+    const [name, setName] = useState(() => localStorage.getItem('uno_player_name') || '');
 
     return (
         <div className="lobby-screen glass floating">
@@ -19,7 +19,10 @@ const Lobby: React.FC<Props> = ({ onJoin }) => {
                     placeholder="Player Name"
                     className="neo-input"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                        setName(e.target.value);
+                        localStorage.setItem('uno_player_name', e.target.value);
+                    }}
                 />
                 <input
                     type="text"
@@ -43,7 +46,7 @@ const Lobby: React.FC<Props> = ({ onJoin }) => {
             <button
                 className="neo-button secondary"
                 onClick={() => {
-                    const randomName = "Scout_" + Math.floor(Math.random() * 1000);
+                    const randomName = name || "Scout_" + Math.floor(Math.random() * 1000);
                     const randomRoom = "SOLO_" + Math.random().toString(36).substr(2, 5);
                     onJoin(randomRoom, randomName);
                 }}
