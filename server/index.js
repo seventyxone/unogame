@@ -15,7 +15,7 @@ const io = new Server(server, {
 });
 
 const { rooms, setIo } = require('./state');
-const { startGameInternal } = require('./utils/gameCore');
+const { startGameInternal, nextPlayerIndex } = require('./utils/gameCore');
 const { performPlaySequence, performDrawCard, handleAcceptChallenge, handleChallengeDraw4 } = require('./services/playerActionService');
 const { checkBotTurn } = require('./services/botService');
 
