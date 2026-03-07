@@ -14,7 +14,11 @@ const defaultServer = isGitHubPages
   : `http://${window.location.hostname}:3001`; // Local network
 
 const SOCKET_URL = customServer || import.meta.env.VITE_SERVER_URL || defaultServer;
-const socket = io(SOCKET_URL);
+const socket = io(SOCKET_URL, {
+  extraHeaders: {
+    "ngrok-skip-browser-warning": "69420"
+  }
+});
 
 const App: React.FC = () => {
   const [roomId, setRoomId] = useState<string>('');
