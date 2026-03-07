@@ -78,6 +78,9 @@ const Game: React.FC<Props> = ({
     const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
     const [showHistory, setShowHistory] = useState<boolean>(false);
     const [animatedHand, setAnimatedHand] = useState<any[]>([]);
+    const [activeEvent, setActiveEvent] = useState<{ id: number, type: string, count?: number } | null>(null);
+    const [isHandMinimized, setIsHandMinimized] = useState<boolean>(false);
+    const [autoHidePreference, setAutoHidePreference] = useState<boolean>(true);
     const scrollRef = React.useRef<HTMLDivElement>(null);
 
     // Sequential Hand Loading Engine — preserves user drag order
@@ -97,6 +100,71 @@ const Game: React.FC<Props> = ({
             setAnimatedHand([...kept, ...newCards]);
         }
     }, [me?.hand]);
+
+    // Game Event Listener for Zoom Effects
+    useEffect(() => {
+        if (!gameState.lastAction || !gameState.lastAction.id) return;
+        const action = gameState.lastAction;
+
+        let eventType = '';
+        let eventCount = 0;
+
+        if (action.type === 'play') {
+            const values = action.sequence.map((c: any) => c.value);
+            const skips = action.skippedPlayers || [];
+
+            if (skips.length > 0) {
+                if (action.specialReverse) {
+                    eventType = 'EXTRA TURN!';
+                } else {
+                    const names = skips.map((s: any) => s.name.split(' ')[0]); // Use first names/short names
+                    eventType = names.join(' & ') + ' SKIPPED';
+                }
+            } else if (values.includes('Reverse')) {
+                eventType = 'REVERSE';
+            }
+
+            // Handle merged War Result (Draw + Play)
+            if (action.warResult) {
+                eventType = 'DRAW';
+                eventCount = action.warResult.count;
+            }
+        } else if (action.type === 'draw') {
+            eventType = 'DRAW';
+            eventCount = action.count;
+        } else if (action.type === 'challenge_result') {
+            eventType = action.result === 'success' ? 'EXPOSED!' : 'INNOCENT!';
+            if (action.penaltyCount) eventCount = action.penaltyCount;
+        }
+
+        if (eventType) {
+            setActiveEvent({ id: action.id, type: eventType, count: eventCount });
+            // Snappy 800ms cooldown
+            const timer = setTimeout(() => setActiveEvent(null), 850);
+            return () => clearTimeout(timer);
+        }
+    }, [gameState.lastAction?.id]);
+
+    // Auto-minimize hand logic
+    useEffect(() => {
+        if (isMyTurn) {
+            // My turn starts: always show
+            setIsHandMinimized(false);
+        } else {
+            // Someone else's turn: auto-hide ONLY if the user hasn't explicitly clicked "SHOW" (global preference)
+            if (autoHidePreference) {
+                setIsHandMinimized(true);
+            }
+        }
+    }, [isMyTurn, autoHidePreference]);
+
+    const handleToggleHand = () => {
+        const nextState = !isHandMinimized;
+        setIsHandMinimized(nextState);
+        // If the user manually shows the hand (nextState = false), disable auto-hiding globally for this session
+        // If the user manually hides the hand (nextState = true), enable auto-hiding logic
+        setAutoHidePreference(nextState);
+    };
 
     const isCardPlayableNormally = (card: any) => {
         return card.color === 'wild' || card.color === topCard.color || card.value === topCard.value;
@@ -159,14 +227,23 @@ const Game: React.FC<Props> = ({
     // Calculate circular positions for opponents
     const getSeatPosition = (index: number, total: number) => {
         const isMobile = window.innerWidth <= 480;
-        // Broaden the arc significantly to use more horizontal space
-        const startAngle = (140 * Math.PI) / 180;
-        const endAngle = (400 * Math.PI) / 180;
+        // In portrait mode, push the player orbit higher and narrower to clear the action zone
+        const isPortrait = window.innerHeight > window.innerWidth;
+        const radiusFactor = isHandMinimized ? 0.75 : 1.0;
 
-        // Tighter vertical and horizontal orbit for high player counts on small screens
-        const radiusX = isMobile ? (total > 5 ? 38 : 42) : 44;
-        const radiusY = isMobile ? (total > 5 ? 22 : 30) : 34;
-        const centerY = isMobile ? (total > 5 ? 42 : 48) : 52;
+        // Narrower arc for portrait to keep players in a tighter "crown"
+        const portraitStartAngle = (170 * Math.PI) / 180;
+        const portraitEndAngle = (370 * Math.PI) / 180;
+
+        const startAngle = isPortrait ? portraitStartAngle : (140 * Math.PI) / 180;
+        const endAngle = isPortrait ? portraitEndAngle : (400 * Math.PI) / 180;
+
+        const portraitScaleX = 1.0;
+        const portraitScaleY = isPortrait ? 1.1 : 1.0;
+
+        const radiusX = (isMobile ? (total > 5 ? 36 : 40) : 42) * radiusFactor * portraitScaleX;
+        const radiusY = (isMobile ? (total > 5 ? 22 : 30) : 34) * radiusFactor * portraitScaleY;
+        const centerY = (isMobile && isPortrait) ? (isHandMinimized ? 35 : 40) : (isMobile ? (isHandMinimized ? 42 : 48) : 52);
 
         const step = total > 1 ? (endAngle - startAngle) / (total - 1) : 0;
         const angle = total === 1 ? (startAngle + endAngle) / 2 : startAngle + (step * index);
@@ -231,10 +308,81 @@ const Game: React.FC<Props> = ({
             </button>
 
             <div className="arena-background">
-                <div className="arena-glow-ring"></div>
             </div>
 
             <LayoutGroup>
+                {/* Integrated Command Center - Docked bottom (Order matters for CSS ~ sibling selector) */}
+                <div className={`hand-command-center ${isMyTurn ? 'my-turn-glow' : ''} ${isHandMinimized ? 'minimized' : ''}`}>
+                    <button key="toggle-tab" className="neo-button toggle-btn-inline" onClick={handleToggleHand} disabled={isMyTurn}>
+                        {isHandMinimized ? '👁️ SHOW' : '🙈 HIDE'}
+                    </button>
+                    <div className="my-hand-container">
+                        <div className="hand-controls">
+                            <span className="direction-indicator">{gameState.direction === 1 ? '↻ CLOCKWISE' : '↺ ANTI-CLOCKWISE'}</span>
+                            <span className="player-name-label">PLAYER {me?.name}</span>
+                            <button className="neo-button sort-btn" onClick={handleAutoSort}>⚡ SORT</button>
+
+                            {isMyTurn && gameState.drewThisTurn && selection.length === 0 && (
+                                <button className="neo-button pass-btn-inline" onClick={onPassTurn}>🚀 PASS</button>
+                            )}
+                        </div>
+                        <div className="my-hand-wrapper">
+                            <button
+                                className={`hand-scroll-btn scroll-left-btn ${!canScrollLeft ? 'disabled' : ''}`}
+                                onClick={() => canScrollLeft && scrollHand('left')}
+                            >
+                                <span className="arrow">←</span>
+                            </button>
+                            <div className="my-hand">
+                                <Reorder.Group
+                                    axis="x"
+                                    values={animatedHand}
+                                    onReorder={setAnimatedHand}
+                                    className="reorder-hand"
+                                    ref={handScrollRef}
+                                    onScroll={checkScroll}
+                                >
+                                    <AnimatePresence>
+                                        {animatedHand.map((card: any, idx: number) => {
+                                            const isSelected = selection.find(s => s.id === card.id);
+                                            const canBeAdded = selection.length === 0
+                                                ? (gameState.pendingDrawCount > 0 ? isCardPlayableInWar(card) : isCardPlayableNormally(card))
+                                                : (card.value === selection[0].value);
+
+                                            return (
+                                                <Reorder.Item
+                                                    value={card}
+                                                    key={card.id}
+                                                    className="player-card-wrapper drag-item"
+                                                    style={{ zIndex: isSelected ? 100 : idx }}
+                                                    onClick={() => handleCardClick(card)}
+                                                    whileDrag={{ scale: 1.15, zIndex: 100, y: -20 }}
+                                                    initial={{ opacity: 0, y: 50, scale: 0.8 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: -50, scale: 0 }}
+                                                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                                                >
+                                                    <UnoCard
+                                                        card={card}
+                                                        disabled={!isMyTurn || (selection.length > 0 && !isSelected && !canBeAdded)}
+                                                        highlight={isSelected}
+                                                    />
+                                                </Reorder.Item>
+                                            );
+                                        })}
+                                    </AnimatePresence>
+                                </Reorder.Group>
+                            </div>
+                            <button
+                                className={`hand-scroll-btn scroll-right-btn ${!canScrollRight ? 'disabled' : ''}`}
+                                onClick={() => canScrollRight && scrollHand('right')}
+                            >
+                                <span className="arrow">→</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="table-arena">
                     <div className="circular-orbit">
                         {others.map((player: any, index: number) => {
@@ -248,22 +396,20 @@ const Game: React.FC<Props> = ({
                                     className={`table-seat ${isActive ? 'active' : ''}`}
                                     style={{ ...pos, transform: 'translate(-50%, -50%)' }}
                                 >
+                                    {!isFinished && <MiniHand hand={player.hand} active={isActive} />}
                                     <div className="opponent-tag isometric">
                                         <div className="tag-inner">{player.name}</div>
-                                        {isActive && <div className="turn-pulse">CURRENT TURN</div>}
-                                        <div className="player-count-badge">
-                                            <span className="card-glyph">🗂️</span>
-                                            {player.hand?.length || 0}
-                                        </div>
                                     </div>
-                                    {!isFinished && <MiniHand hand={player.hand} active={isActive} />}
                                 </div>
                             );
                         })}
                     </div>
 
+
+
                     <div className="main-battle-area">
                         <div className="board-center">
+
                             <div className="piles-row">
                                 <div className="deck-pile" onClick={isMyTurn && selection.length === 0 ? onDrawCard : undefined}>
                                     <div className="deck-3d-stack">
@@ -339,102 +485,34 @@ const Game: React.FC<Props> = ({
 
                 </div>{/* END table-arena */}
 
-                {/* Integrated Command Center - Docked bottom */}
-                <div className={`hand-command-center ${isMyTurn ? 'my-turn-glow' : ''}`}>
-                    <div className="my-hand-container">
-                        <div className="hand-controls">
-                            <span className="direction-indicator">{gameState.direction === 1 ? '↻ CLOCKWISE' : '↺ ANTI-CLOCKWISE'}</span>
-                            <span className="player-name-label">PLAYER {me?.name}</span>
-                            <button className="neo-button sort-btn" onClick={handleAutoSort}>⚡ SORT</button>
-                        </div>
-                        <div className="my-hand-wrapper">
-                            <button
-                                className={`hand-scroll-btn scroll-left-btn ${!canScrollLeft ? 'disabled' : ''}`}
-                                onClick={() => canScrollLeft && scrollHand('left')}
-                            >
-                                <span className="arrow">←</span>
-                            </button>
-                            <div className="my-hand">
-                                <Reorder.Group
-                                    axis="x"
-                                    values={animatedHand}
-                                    onReorder={setAnimatedHand}
-                                    className="reorder-hand"
-                                    ref={handScrollRef}
-                                    onScroll={checkScroll}
-                                >
-                                    <AnimatePresence>
-                                        {animatedHand.map((card: any, idx: number) => {
-                                            const isSelected = selection.find(s => s.id === card.id);
-                                            const canBeAdded = selection.length === 0
-                                                ? (gameState.pendingDrawCount > 0 ? isCardPlayableInWar(card) : isCardPlayableNormally(card))
-                                                : (card.value === selection[0].value);
-
-                                            return (
-                                                <Reorder.Item
-                                                    value={card}
-                                                    key={card.id}
-                                                    className="player-card-wrapper drag-item"
-                                                    style={{ zIndex: isSelected ? 100 : idx }}
-                                                    onClick={() => handleCardClick(card)}
-                                                    whileDrag={{ scale: 1.15, zIndex: 100, y: -20 }}
-                                                    initial={{ opacity: 0, y: 50, scale: 0.8 }}
-                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                    exit={{ opacity: 0, y: -50, scale: 0 }}
-                                                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                                                >
-                                                    <UnoCard
-                                                        card={card}
-                                                        disabled={!isMyTurn || (selection.length > 0 && !isSelected && !canBeAdded)}
-                                                        highlight={isSelected}
-                                                    />
-                                                </Reorder.Item>
-                                            );
-                                        })}
-                                    </AnimatePresence>
-                                </Reorder.Group>
-                            </div>
-                            <button
-                                className={`hand-scroll-btn scroll-right-btn ${!canScrollRight ? 'disabled' : ''}`}
-                                onClick={() => canScrollRight && scrollHand('right')}
-                            >
-                                <span className="arrow">→</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {isMyTurn && gameState.drewThisTurn && selection.length === 0 && (
-                        <div className="pass-zone">
-                            <button className="neo-button pass-btn" onClick={onPassTurn}>PASS TURN</button>
-                        </div>
-                    )}
-                </div>
             </LayoutGroup>
 
             {/* OVERLAY SECTION - Outside LayoutGroup for stability */}
             <AnimatePresence>
                 {selection.length > 0 && (
                     <motion.div
-                        className="selection-zone"
-                        initial={{ y: 100, x: "-50%", opacity: 0 }}
-                        animate={{ y: 0, x: "-50%", opacity: 1 }}
-                        exit={{ y: 100, x: "-50%", opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        className="selection-zone floating"
+                        initial={{ y: 50, opacity: 0, x: '-50%' }}
+                        animate={{ y: 0, opacity: 1, x: '-50%' }}
+                        exit={{ y: 50, opacity: 0, x: '-50%' }}
                     >
                         <div className="selection-header">
-                            <div className="button-group">
-                                <button className="neo-button confirm-btn" onClick={handleConfirm}>CONFIRM PLAY</button>
-                                <button className="neo-button secondary small" onClick={() => setSelection([])}>X</button>
+                            <div className="selection-info">
+                                <h3>SELECTED ({selection.length})</h3>
+                                <div className="button-group">
+                                    <button className="neo-button confirm-btn" onClick={handleConfirm}>CONFIRM PLAY</button>
+                                    <button className="neo-button secondary small" onClick={() => setSelection([])}>X</button>
+                                </div>
                             </div>
-                        </div>
-                        <div className="selection-list">
-                            <AnimatePresence>
-                                {selection.map(card => (
-                                    <div key={card.id} className="selected-card-wrapper" onClick={() => removeFromSelection(card.id)}>
-                                        <UnoCard card={card} isSmall disabled noLayout />
-                                    </div>
-                                ))}
-                            </AnimatePresence>
+                            <div className="selection-list">
+                                <AnimatePresence>
+                                    {selection.map(card => (
+                                        <div key={card.id} className="selected-card-wrapper" onClick={() => removeFromSelection(card.id)}>
+                                            <UnoCard card={card} isSmall disabled noLayout />
+                                        </div>
+                                    ))}
+                                </AnimatePresence>
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -470,7 +548,7 @@ const Game: React.FC<Props> = ({
             <AnimatePresence>
                 {gameState.pendingChallenge && gameState.pendingChallenge.victimId === myId && (
                     <motion.div
-                        className="modal-overlay"
+                        className="challenge-overlay"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -514,6 +592,25 @@ const Game: React.FC<Props> = ({
                                 NEW GAME
                             </button>
                         </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Game Announcements - Fixed to Screen Center */}
+            <AnimatePresence mode="wait">
+                {activeEvent && (
+                    <motion.div
+                        key={activeEvent.id}
+                        className="event-zoom-container"
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1.1, opacity: 1 }}
+                        exit={{ scale: 1.5, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                    >
+                        <div className="event-zoom-text">{activeEvent.type}</div>
+                        {activeEvent.count && (activeEvent.type === 'draw' || activeEvent.count > 0) && (
+                            <div className="event-zoom-sub">+{activeEvent.count} CARDS</div>
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>

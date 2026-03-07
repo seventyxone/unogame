@@ -105,7 +105,10 @@ const checkBotTurn = (roomId) => {
                         // Pick color most present in hand
                         const counts = { red: 0, blue: 0, green: 0, yellow: 0 };
                         player.hand.forEach(c => { if (c.color !== 'wild') counts[c.color]++; });
-                        selectedColor = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+                        const max = Math.max(...Object.values(counts));
+                        selectedColor = max > 0
+                            ? Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b)
+                            : 'red';
                         console.log(`[BOT] ${player.name} playing ${bestSeq[0].value}, chose color: ${selectedColor}`);
                     }
                     room.botIsThinking = false; // RELEASE LOCK EARLY

@@ -58,6 +58,12 @@
   gap: 1rem;
 }
 
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .neo-button.secondary {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -351,13 +357,15 @@ input:disabled {
   width: 100vw;
   height: 100vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
+  /* UI stays at bottom, Arena stays at top in JSX order */
   padding: 0;
   position: relative;
   background: #000;
   font-family: 'Outfit', sans-serif;
   transform-style: preserve-3d;
   overflow: hidden;
+  background-attachment: fixed;
 }
 
 /* Turn Banner — always visible at top */
@@ -415,24 +423,14 @@ input:disabled {
 }
 
 .arena-background {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  background: radial-gradient(circle at center, #ff4500 0%, #8b0000 30%, #1a0505 100%);
-  overflow: hidden;
+  background: radial-gradient(circle at center, #2d0a0a 0%, #1a0505 100%);
+  z-index: -1;
+  pointer-events: none;
 }
 
-.arena-glow-ring {
-  position: absolute;
-  left: 50%;
-  top: 55%;
-  transform: translate(-50%, -50%);
-  width: 75vh;
-  height: 75vh;
-  border-radius: 50%;
-  border: 8px double rgba(255, 69, 0, 0.4);
-  box-shadow: 0 0 150px rgba(255, 69, 0, 0.2), inset 0 0 150px rgba(255, 69, 0, 0.2);
-  filter: blur(1px);
-}
+/* Removed arena-glow-ring */
 
 .direction-arrows {
   position: absolute;
@@ -490,11 +488,77 @@ input:disabled {
   align-items: center;
   justify-content: flex-end;
   z-index: 4000;
+  position: relative;
   pointer-events: none;
   transform-style: preserve-3d;
   flex-shrink: 0;
-  transition: all 0.3s ease;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease, height 0.4s ease;
+  overflow: visible;
+  /* To allow the toggle tab to peek out */
 }
+
+.toggle-btn-inline {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  z-index: 5001;
+  background: rgba(0, 0, 0, 0.85) !important;
+  border: 1px solid rgba(255, 69, 0, 0.5) !important;
+  border-bottom: none !important;
+  border-radius: 12px 12px 0 0 !important;
+  padding: 6px 16px !important;
+  font-size: 0.75rem !important;
+  color: #ffaa00 !important;
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+  min-width: 100px;
+}
+
+.toggle-btn-inline:hover {
+  background: rgba(30, 30, 30, 0.95) !important;
+  color: white !important;
+  transform: translate(-50%, -100%) scale(1.05) !important;
+}
+
+.hand-command-center.minimized {
+  transform: translateY(100%);
+  height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.hand-command-center.minimized .my-hand-container {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.hand-command-center.minimized+.table-arena {
+  flex-grow: 1;
+  height: 100vh;
+}
+
+/* Scale EVERYTHING in the arena when hand is minimized - PRESERVE CENTERING */
+.hand-command-center.minimized+.table-arena .circular-orbit {
+  transform: translate(-50%, -50%) scale(1.05) !important;
+  transform-origin: center center;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  top: 30% !important;
+}
+
+.hand-command-center.minimized+.table-arena .main-battle-area {
+  transform: translate(-50%, -50%) scale(1.05) !important;
+  transform-origin: center center;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  top: 60% !important;
+}
+
+.hand-command-center.minimized+.table-arena .main-battle-area {
+  z-index: 50;
+}
+
+/* Removed redundant board-center scaling */
 
 .hand-command-center.my-turn-glow {
   background: linear-gradient(to top, rgba(255, 170, 0, 0.25) 0%, rgba(255, 100, 0, 0.15) 30%, transparent 100%);
@@ -563,10 +627,11 @@ input:disabled {
 
 .selection-zone {
   position: fixed;
-  bottom: 210px;
+  bottom: 220px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2000;
+  z-index: 5000;
+  /* Above EVERYTHING including command dock */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -579,6 +644,8 @@ input:disabled {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   pointer-events: auto;
   min-width: 320px;
+  width: auto;
+  max-width: 95vw;
 }
 
 @media (max-width: 768px) {
@@ -1223,10 +1290,12 @@ input:disabled {
   max-width: 1000px;
   margin: 0 auto;
   padding: 1rem;
-  overflow-x: auto;
+  overflow: visible;
   display: flex;
   justify-content: center;
   align-items: flex-end;
+  background: transparent !important;
+  /* Remove redundant burgundy background */
 }
 
 .my-hand {
@@ -1493,12 +1562,13 @@ input:disabled {
 .table-arena {
   position: relative;
   width: 100%;
-  flex: 1;
+  flex-grow: 1;
   min-height: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: radial-gradient(circle at center, #2d0a0a 0%, #1a0505 100%);
+  background: transparent;
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 
@@ -1512,6 +1582,7 @@ input:disabled {
   border-radius: 50%;
   pointer-events: none;
   z-index: 1;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.5s ease;
 }
 
 .table-seat {
@@ -1533,26 +1604,10 @@ input:disabled {
   border-radius: 30px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: white;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  z-index: 1000 !important;
+  pointer-events: none;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
   white-space: nowrap;
-}
-
-.player-count-badge {
-  background: #fff;
-  color: #000;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  font-weight: 950;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .table-seat.active {
@@ -1574,6 +1629,7 @@ input:disabled {
   align-items: center;
   z-index: 50;
   transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.5s ease;
 }
 
 .board-center {
@@ -1643,6 +1699,7 @@ input:disabled {
   display: flex;
   justify-content: center;
   height: 100px;
+  z-index: 10;
 }
 
 .mini-card-wrapper {
@@ -1651,106 +1708,11 @@ input:disabled {
   transition: transform 0.2s ease;
 }
 
-.activity-stream.side-log {
-  width: clamp(200px, 15vw, 280px);
-  height: clamp(250px, 30vh, 350px);
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  display: flex;
-  flex-direction: column;
-  margin-left: 2rem;
-  animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.3);
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.history-hint {
-  position: absolute;
-  bottom: -35px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.6rem;
-  font-weight: bold;
-  opacity: 0.3;
-  white-space: nowrap;
-  letter-spacing: 1px;
-  pointer-events: none;
-  text-transform: uppercase;
-}
-
-.stream-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.8rem 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.close-log {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 1.5rem;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0 0.5rem;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.close-log:hover {
-  opacity: 1;
-}
-
-.discard-pile {
-  cursor: pointer;
-  position: relative;
-  transition: transform 0.2s ease;
-}
-
-.discard-pile:hover {
-  transform: scale(1.05);
-}
-
-/* Horizontal Opponent Hand */
-.opponent-hand-mini {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 0.5rem;
-  overflow: visible;
-  height: clamp(60px, 8vh, 100px);
-  width: 100%;
-}
-
-.mini-hand-card-wrapper {
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  cursor: default;
-  margin-left: -45px !important;
-  /* Increase overlap */
-  transform: scale(0.8);
-  /* Shrink a bit */
-}
-
-.mini-hand-card-wrapper:first-child {
+.mini-card-wrapper:first-child {
   margin-left: 0 !important;
 }
 
-.mini-hand-card-wrapper:hover {
+.mini-card-wrapper:hover {
   transform: translateY(-20px) scale(1) rotate(2deg);
   z-index: 100;
 }
@@ -1946,24 +1908,43 @@ input:disabled {
   }
 
   .opponent-tag.isometric {
-    padding: 3px 6px !important;
-    font-size: 0.65rem !important;
-    gap: 4px !important;
-    transform: translateY(-4px) scale(0.85) !important;
-    /* normalish nametag size */
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) scale(0.85) !important;
+    padding: 3px 8px !important;
+    font-size: 0.6rem !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    z-index: 1000 !important;
+    margin: 0 !important;
   }
 
-  .mini-hand {
-    transform: scale(0.5) !important;
-    /* Scale down just the cards explicitly */
-    transform-origin: top center;
+  .hand-command-center.minimized+.table-arena .circular-orbit {
+    top: 35% !important;
+    transform: translate(-50%, -50%) scale(1.05) !important;
+  }
+
+  .hand-command-center.minimized+.table-arena .main-battle-area {
+    top: 70% !important;
+    transform: translate(-50%, -50%) scale(1.05) !important;
   }
 
   .board-center {
-    transform: scale(0.85) rotateX(0deg) !important;
-    gap: 15px !important;
-    margin-top: 140px !important;
-    /* Drops the discard/deck pile significantly lower to close gap */
+    transform: scale(0.8) rotateX(0deg) !important;
+    gap: 10px !important;
+    margin-top: 20px !important;
+  }
+
+  .selection-zone {
+    bottom: 140px !important;
+    padding: 8px 12px !important;
+    min-width: 92vw !important;
+    max-width: 92vw !important;
+    transform: translateX(-50%) scale(0.9) !important;
+  }
+
+  .selection-header h3 {
+    font-size: 0.8rem !important;
   }
 
   .hand-command-center {
@@ -1983,16 +1964,32 @@ input:disabled {
     min-height: 120px !important;
   }
 
+  .hand-command-center.minimized+.table-arena .circular-orbit {
+    top: 42% !important;
+    transform: translate(-50%, -50%) scale(1.05) !important;
+  }
+
+  .hand-command-center.minimized+.table-arena .main-battle-area {
+    top: 75% !important;
+    transform: translate(-50%, -50%) scale(1.05) !important;
+  }
+
   .board-center {
-    transform: scale(0.6) rotateX(0deg) !important;
-    margin-top: 40px !important;
-    gap: 15px !important;
+    transform: scale(0.8) !important;
+    /* Scale without warping rotateX */
+    margin-top: 20px !important;
+    gap: 30px !important;
   }
 
   .deck-pile,
   .discard-pile-cluster {
-    width: 60px !important;
-    height: 90px !important;
+    width: 80px !important;
+    height: 120px !important;
+  }
+
+  /* Boost Discard Pile scale */
+  .discard-pile-cluster .uno-card {
+    transform: scale(1.1) !important;
   }
 
   .mini-hand {
@@ -2001,9 +1998,15 @@ input:disabled {
   }
 
   .opponent-tag.isometric {
-    transform: translateY(-2px) scale(0.55) !important;
-    padding: 2px 4px !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) scale(0.65) !important;
+    padding: 2px 6px !important;
     font-size: 0.6rem !important;
+    background: rgba(0, 0, 0, 0.8) !important;
+    z-index: 1000 !important;
+    margin: 0 !important;
   }
 
   .hand-command-center {
@@ -2020,8 +2023,106 @@ input:disabled {
   }
 
   .selection-zone {
-    bottom: 50px !important;
-    transform: translateX(-50%) scale(0.65) !important;
-    z-index: 3000 !important;
+    bottom: unset !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) scale(0.8) !important;
+    z-index: 5500 !important;
+    background: rgba(0, 0, 0, 0.95) !important;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --card-width: 42px !important;
+    --card-height: 63px !important;
+    --hand-overlap: -25px !important;
+  }
+
+  .table-arena {
+    min-height: 100px !important;
+  }
+
+  .board-center {
+    transform: scale(0.65) rotateX(0deg) !important;
+    margin-top: 35px !important;
+    gap: 15px !important;
+  }
+
+  .hand-command-center {
+    height: 38% !important;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 50%, transparent 100%) !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding-bottom: 5px;
+  }
+
+  .my-hand-container {
+    transform: scale(0.9);
+    transform-origin: bottom center;
+  }
+
+  .direction-indicator {
+    font-size: 0.7rem !important;
+  }
+
+  .selection-zone {
+    top: 50% !important;
+    bottom: unset !important;
+    transform: translate(-50%, -50%) scale(0.7) !important;
+    z-index: 6000 !important;
+    max-width: 90vw;
+  }
+
+  .hand-controls {
+    margin-bottom: 2px !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Purged duplicate/spaghetti logic */
+}
+
+/* Game Event Animations - Now relative to the board-center */
+.event-zoom-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+}
+
+.event-zoom-text {
+  font-size: 5rem;
+  font-weight: 900;
+  color: white;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(255, 69, 0, 0.8), 0 0 40px rgba(0, 0, 0, 0.9);
+  letter-spacing: 5px;
+  text-align: center;
+}
+
+.event-zoom-sub {
+  font-size: 2rem;
+  color: #ffaa00;
+  font-weight: 800;
+  margin-top: -10px;
+}
+
+@media (max-width: 768px) {
+  .event-zoom-text {
+    font-size: 3rem;
+  }
+
+  .event-zoom-sub {
+    font-size: 1.5rem;
   }
 }

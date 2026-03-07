@@ -96,17 +96,29 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
             card.color = newColor || 'red'; // Set all wild tiles in this sequence to chosen color
         }
         room.discardPile.push(card);
+        if (room.discardPile.length > 30) room.discardPile.shift();
         if (card.value === 'Draw2') totalDraw += 2;
         if (card.value === 'Draw4') totalDraw += 4;
         if (card.value === 'Reverse') revCount++;
         if (card.value === 'Skip') skipCount++;
     });
 
+    room.skippedPlayers = []; // RESET for every play
+    let isSpecialReverse = room.rules?.specialReverse && (revCount >= 2 || (room.players.length === 2 && revCount > 0));
+
+    // Handle 1v1 Reverse as a Skip
+    if (room.players.length === 2 && revCount % 2 !== 0 && room.rules?.specialReverse) {
+        skipCount++;
+    }
+
     const action = {
+        id: Date.now(), // UNIQUE ID
         type: 'play',
         userId: player.userId,
         userName: player.name,
-        sequence: cards.map(c => ({ ...c })) // Now has updated colors
+        sequence: cards.map(c => ({ ...c })),
+        specialReverse: isSpecialReverse,
+        skippedPlayers: []
     };
 
     room.playHistory = room.playHistory || [];
@@ -121,92 +133,114 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId) => {
     let extraTurn = room.rules?.specialReverse && revCount >= 2;
 
     if (revCount % 2 !== 0) {
-        if (room.players.length === 2) skipCount++;
-        else room.direction *= -1;
+        if (room.players.length === 2) {
+            if (room.rules?.specialReverse) {
+                // In 2-player, reverse acts as skip if specialReverse is on
+                // This skip is already handled by the `room.skippedPlayers` logic above if it was a single reverse
+                // If it's a double reverse, it's an extra turn, so no skip.
+                if (revCount === 1) { /* skip already handled */ }
+            } else {
+                room.direction *= -1;
+            }
+        } else {
+            room.direction *= -1;
+        }
     }
 
     if (!extraTurn) {
-        room.drewThisTurn = false; // Reset draw flag on play
+        room.drewThisTurn = false;
 
-        // CAPTURE PREVIOUS COLOR BEFORE TURN ADVANCE (for Draw4 challenge)
-        const prevTop = room.discardPile[room.discardPile.length - cards.length - 1];
-        const targetChallengeColor = prevTop ? (prevTop.color || prevTop.originalColor) : null;
-        const playedDraw4 = cards.some(c => c.value === 'Draw4');
-
+        // Advance to NEXT player (the person who would normally be next)
         room.currentPlayerIndex = nextPlayerIndex(room);
-        for (let i = 0; i < skipCount; i++) {
+
+        // If skipCount > 0, we skip THAT player and potentially more
+        while (skipCount > 0) {
+            const skippedPlayer = room.players[room.currentPlayerIndex];
+            room.skippedPlayers.push({ name: skippedPlayer.name, userId: skippedPlayer.userId });
+
+            // Advance past the skipped player
             room.currentPlayerIndex = nextPlayerIndex(room);
+            skipCount--;
+        }
+    }
+
+    action.skippedPlayers = room.skippedPlayers;
+    room.lastAction = action;
+
+    if (room.pendingDrawCount > 0) {
+        const nextP = room.players[room.currentPlayerIndex];
+
+        // Compute these for challenge logic (fixes ReferenceError)
+        const playedDraw4 = action.sequence.some(c => c.value === 'Draw4');
+        const prevTop = room.discardPile[room.discardPile.length - action.sequence.length - 1];
+        const targetChallengeColor = prevTop ? (prevTop.color || prevTop.originalColor) : null;
+
+        // OFFICIAL CHALLENGE RULE: Only applies to Wild Draw 4
+        if (room.rules?.challengeRule && playedDraw4 && room.pendingDrawCount === 4) {
+            room.pendingChallenge = {
+                victimId: nextP.userId,
+                attackerId: player.userId,
+                attackerName: player.name,
+                targetColor: targetChallengeColor,
+                roomId: roomId
+            };
+            io.to(roomId).emit('game_update', room);
+            if (nextP.isBot) {
+                getBotService().checkBotTurn(roomId);
+            }
+            return; // STOP HERE - Wait for victim to accept or challenge
         }
 
-        if (room.pendingDrawCount > 0) {
-            const nextP = room.players[room.currentPlayerIndex];
+        const hasResponse = room.rules?.drawWar && nextP.hand.some(c => {
+            if (c.value === 'Draw2' && (room.discardPile[room.discardPile.length - 1].value === 'Draw2' || room.rules?.allowDraw2OnDraw4)) return true;
+            if (c.value === 'Draw4' && (room.discardPile[room.discardPile.length - 1].value === 'Draw4' || room.rules?.allowDraw4OnDraw2)) return true;
+            return false;
+        });
 
-            // OFFICIAL CHALLENGE RULE: Only applies to Wild Draw 4
-            if (room.rules?.challengeRule && playedDraw4 && room.pendingDrawCount === 4) {
-                room.pendingChallenge = {
-                    victimId: nextP.userId,
-                    attackerId: player.userId,
-                    attackerName: player.name,
-                    targetColor: targetChallengeColor,
-                    roomId: roomId
-                };
-                io.to(roomId).emit('game_update', room);
-                if (nextP.isBot) {
-                    getBotService().checkBotTurn(roomId);
-                }
-                return; // STOP HERE - Wait for victim to accept or challenge
-            }
+        if (!hasResponse) {
+            const drawn = room.deck.splice(0, room.pendingDrawCount);
+            const targetPlayer = room.players[room.currentPlayerIndex];
+            targetPlayer.hand.push(...drawn);
 
-            const hasResponse = room.rules?.drawWar && nextP.hand.some(c => {
-                if (c.value === 'Draw2' && (room.discardPile[room.discardPile.length - 1].value === 'Draw2' || room.rules?.allowDraw2OnDraw4)) return true;
-                if (c.value === 'Draw4' && (room.discardPile[room.discardPile.length - 1].value === 'Draw4' || room.rules?.allowDraw4OnDraw2)) return true;
-                return false;
-            });
+            // Log the forced draw in play history
+            const drawAction = {
+                type: 'draw',
+                userId: targetPlayer.userId,
+                userName: targetPlayer.name,
+                count: room.pendingDrawCount
+            };
+            room.playHistory = room.playHistory || [];
+            room.playHistory.push(drawAction);
+            const historyLimit = Math.max(room.players.length, 10);
+            if (room.playHistory.length > historyLimit) room.playHistory.shift();
 
-            if (!hasResponse) {
-                const drawn = room.deck.splice(0, room.pendingDrawCount);
-                const targetPlayer = room.players[room.currentPlayerIndex];
-                targetPlayer.hand.push(...drawn);
-
-                // Log the forced draw in play history
-                const drawAction = {
-                    type: 'draw',
+            room.lastAction = {
+                ...room.lastAction,
+                id: Date.now(), // Refresh ID for draw side-effect
+                warResult: {
                     userId: targetPlayer.userId,
                     userName: targetPlayer.name,
                     count: room.pendingDrawCount
-                };
-                room.playHistory = room.playHistory || [];
-                room.playHistory.push(drawAction);
-                const historyLimit = Math.max(room.players.length, 10);
-                if (room.playHistory.length > historyLimit) room.playHistory.shift();
-
-                room.lastAction = {
-                    ...room.lastAction,
-                    warResult: {
-                        userId: targetPlayer.userId,
-                        userName: targetPlayer.name,
-                        count: room.pendingDrawCount
-                    }
-                };
-                room.pendingDrawCount = 0;
-
-                // Custom Rule: Play After Multiple Draw
-                const topCard = room.discardPile[room.discardPile.length - 1];
-                const hasPlayable = drawn.some(c =>
-                    c.color === 'wild' || c.color === topCard.color || c.value === topCard.value || (topCard.originalColor && c.color === topCard.color)
-                );
-
-                if (room.rules?.playAfterPenalty && hasPlayable && !targetPlayer.isBot) {
-                    room.drewThisTurn = true; // Let player choose to play or pass
-                } else {
-                    room.drewThisTurn = false;
-                    room.currentPlayerIndex = nextPlayerIndex(room);
                 }
+            };
+            room.pendingDrawCount = 0;
 
-                if (targetPlayer.isBot) {
-                    // Bot already drew, above logic handled turn advancement
-                    getBotService().checkBotTurn(roomId);
-                }
+            // Custom Rule: Play After Multiple Draw
+            const topCard = room.discardPile[room.discardPile.length - 1];
+            const hasPlayable = drawn.some(c =>
+                c.color === 'wild' || c.color === topCard.color || c.value === topCard.value || (topCard.originalColor && c.color === topCard.color)
+            );
+
+            if (room.rules?.playAfterPenalty && hasPlayable && !targetPlayer.isBot) {
+                room.drewThisTurn = true; // Let player choose to play or pass
+            } else {
+                room.drewThisTurn = false;
+                room.currentPlayerIndex = nextPlayerIndex(room);
+            }
+
+            if (targetPlayer.isBot) {
+                // Bot already drew, above logic handled turn advancement
+                getBotService().checkBotTurn(roomId);
             }
         }
     }
@@ -273,18 +307,24 @@ const performDrawCard = (roomId, playerId) => {
     } else {
         if (room.deck.length === 0) {
             const top = room.discardPile.pop();
-            // Reset wild cards back to their original color before reshuffling
-            room.deck = room.discardPile.map(c => {
+            // Fisher-Yates Shuffle for robust randomness
+            const deck = [...room.discardPile];
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            room.deck = deck.map(c => {
                 if (c.originalColor === 'wild') {
                     return { ...c, color: 'wild', originalColor: undefined };
                 }
                 return c;
-            }).sort(() => Math.random() - 0.5);
+            });
             room.discardPile = [top];
         }
         const drawnCard = room.deck.shift();
         player.hand.push(drawnCard);
         const action = {
+            id: Date.now(),
             type: 'draw',
             userId: player.userId,
             userName: player.name,
@@ -344,7 +384,14 @@ const handleAcceptChallenge = (roomId, userId) => {
     const drawn = room.deck.splice(0, 4);
     targetPlayer.hand.push(...drawn);
 
-    room.playHistory.push({ type: 'draw', userId: targetPlayer.userId, userName: targetPlayer.name, count: 4 });
+    room.lastAction = {
+        id: Date.now(),
+        type: 'draw',
+        userId: targetPlayer.userId,
+        userName: targetPlayer.name,
+        count: 4
+    };
+    room.playHistory.push(room.lastAction);
     room.pendingDrawCount = 0;
     room.currentPlayerIndex = nextPlayerIndex(room);
 
@@ -364,20 +411,20 @@ const handleChallengeDraw4 = (roomId, userId) => {
     const victim = room.players.find(p => p.userId === challenge.victimId);
     const hasMatch = attacker.hand.some(c => c.color === challenge.targetColor && c.color !== 'wild');
 
-    let penaltyUser, cardCount;
-    if (hasMatch) {
-        penaltyUser = attacker;
-        cardCount = 4;
-        room.playHistory.push({ type: 'challenge_result', result: 'success', attacker: attacker.name, victim: victim.name });
-    } else {
-        penaltyUser = victim;
-        cardCount = 6;
-        room.playHistory.push({ type: 'challenge_result', result: 'failed', attacker: attacker.name, victim: victim.name });
-    }
-
+    const penaltyUser = hasMatch ? attacker : victim;
+    const cardCount = hasMatch ? 4 : 6;
     const drawn = room.deck.splice(0, cardCount);
     penaltyUser.hand.push(...drawn);
-    room.playHistory.push({ type: 'draw', userId: penaltyUser.userId, userName: penaltyUser.name, count: cardCount });
+
+    room.lastAction = {
+        id: Date.now(),
+        type: 'challenge_result',
+        result: hasMatch ? 'success' : 'failure',
+        attackerId: challenge.attackerId,
+        victimId: challenge.victimId,
+        penaltyCount: cardCount
+    };
+    room.playHistory.push(room.lastAction);
     room.pendingDrawCount = 0;
 
     if (!hasMatch) {

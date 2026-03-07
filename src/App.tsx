@@ -234,10 +234,11 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ startingHandSize: parseInt(e.target.value) })}
                     />
                   </label>
-                  <label className="rule-item" title="Force draw wars where +2 and +4 can be stacked to punish the next player.">
+                  <div className="rules-section-header">STAKING & DRAWS (THE WAR)</div>
+                  <label className="rule-item" title="Traditional Draw War: If someone plays a +2 or +4, you can play one on top to pass the penalty (and increase it) to the next player.">
                     <div className="rule-label-group">
-                      <span>Draw War</span>
-                      <small>Stack +2/+4 to increase penalty</small>
+                      <span>Draw War (Stacking)</span>
+                      <small>Redirect or double penalties</small>
                     </div>
                     <input
                       type="checkbox"
@@ -246,58 +247,10 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ drawWar: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item" title="Allow playing multiple cards of the same number/value in one turn.">
-                    <div className="rule-label-group">
-                      <span>Multi-Play</span>
-                      <small>Play same-value cards together</small>
-                    </div>
-                    <input
-                      type="checkbox"
-                      disabled={gameState.hostUserId !== userId}
-                      checked={gameState.rules?.multiPlay ?? true}
-                      onChange={(e) => updateRules({ multiPlay: e.target.checked })}
-                    />
-                  </label>
-                  <label className="rule-item" title="If you draw a card because you had no move, play it immediately if it's legal.">
-                    <div className="rule-label-group">
-                      <span>Play After Draw</span>
-                      <small>Play drawn card if it matches</small>
-                    </div>
-                    <input
-                      type="checkbox"
-                      disabled={gameState.hostUserId !== userId}
-                      checked={gameState.rules?.allowPlayAfterDraw ?? true}
-                      onChange={(e) => updateRules({ allowPlayAfterDraw: e.target.checked })}
-                    />
-                  </label>
-                  <label className="rule-item" title="Always allowed to draw, but can only pass turn after drawing one.">
-                    <div className="rule-label-group">
-                      <span>Forced Draw/Pass</span>
-                      <small>Must draw to pass if no move</small>
-                    </div>
-                    <input
-                      type="checkbox"
-                      disabled={gameState.hostUserId !== userId}
-                      checked={gameState.rules?.forcedDrawPass ?? false}
-                      onChange={(e) => updateRules({ forcedDrawPass: e.target.checked })}
-                    />
-                  </label>
-                  <label className="rule-item" title="If you draw multiple cards from a +2 or +4, you can still play a legal card immediately.">
-                    <div className="rule-label-group">
-                      <span>Play After Penalty</span>
-                      <small>Play even after draw-wars</small>
-                    </div>
-                    <input
-                      type="checkbox"
-                      disabled={gameState.hostUserId !== userId}
-                      checked={gameState.rules?.playAfterPenalty ?? false}
-                      onChange={(e) => updateRules({ playAfterPenalty: e.target.checked })}
-                    />
-                  </label>
-                  <label className="rule-item" title="Allows stacking +4 on top of a +2 penalty." style={{ opacity: gameState.rules?.drawWar ? 1 : 0.5 }}>
+                  <label className="rule-item" title="Aggressive Logic: Allows you to stack a Wild Draw 4 on top of a +2 penalty. Highly recommended for chaos.">
                     <div className="rule-label-group">
                       <span>Draw 4 on Draw 2</span>
-                      <small>Aggressive stacking</small>
+                      <small>Up-scaling the war</small>
                     </div>
                     <input
                       type="checkbox"
@@ -306,10 +259,10 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ allowDraw4OnDraw2: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item" title="Allows stacking +2 on top of a +4 penalty." style={{ opacity: gameState.rules?.drawWar ? 1 : 0.5 }}>
+                  <label className="rule-item" title="Recursive Logic: Allows you to stack a regular +2 on top of a Wild Draw 4 penalty. Extension of the Draw War.">
                     <div className="rule-label-group">
                       <span>Draw 2 on Draw 4</span>
-                      <small>Recursive penalty logic</small>
+                      <small>Down-scaling the war</small>
                     </div>
                     <input
                       type="checkbox"
@@ -318,28 +271,78 @@ const App: React.FC = () => {
                       onChange={(e) => updateRules({ allowDraw2OnDraw4: e.target.checked })}
                     />
                   </label>
-                  <label className="rule-item" title="Consecutive Reverse plays grant the player an extra turn.">
-                    <div className="rule-label-group">
-                      <span>Special Reverse</span>
-                      <small>Tactical momentum</small>
-                    </div>
-                    <input
-                      type="checkbox"
-                      disabled={gameState.hostUserId !== userId}
-                      checked={gameState.rules?.specialReverse ?? true}
-                      onChange={(e) => updateRules({ specialReverse: e.target.checked })}
-                    />
-                  </label>
-                  <label className="rule-item" title="If enabled, players can challenge a Wild Draw 4. If the attacker had a legal colored card, they draw 4 instead. If not, the victim draws 6.">
+                  <label className="rule-item" title="Official Rule: When someone plays a Wild Draw 4, you can challenge them. If they had another card of the current color, they draw 4 instead of you. If they were honest, you draw 6!">
                     <div className="rule-label-group">
                       <span>Challenge Rule</span>
-                      <small>Official Uno mechanic</small>
+                      <small>Attacker Integrity Check</small>
                     </div>
                     <input
                       type="checkbox"
                       disabled={gameState.hostUserId !== userId}
                       checked={gameState.rules?.challengeRule ?? true}
                       onChange={(e) => updateRules({ challengeRule: e.target.checked })}
+                    />
+                  </label>
+
+                  <div className="rules-section-header">CUSTOM MOVES (THE GLOSSARY)</div>
+                  <label className="rule-item" title="SLANG: 'Number Stacks'. Allows playing multiple cards of the same number/value in one single turn (e.g. three Yellow 7s at once).">
+                    <div className="rule-label-group">
+                      <span>Number Stacks</span>
+                      <small>Multi-play same values</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.multiPlay ?? true}
+                      onChange={(e) => updateRules({ multiPlay: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="SLANG: 'Throwouts'. If you draw a card because you had no move, this allows you to play it immediately if it's a legal match.">
+                    <div className="rule-label-group">
+                      <span>Throwouts (After Draw)</span>
+                      <small>Play drawn card immediately</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.allowPlayAfterDraw ?? true}
+                      onChange={(e) => updateRules({ allowPlayAfterDraw: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="SLANG: 'Throwouts (Penalty)'. After receiving a massive penalty from a Draw War, you are allowed to play one legal card to defend yourself before your turn ends.">
+                    <div className="rule-label-group">
+                      <span>Throwouts (After Penalty)</span>
+                      <small>Recover after a draw war</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.playAfterPenalty ?? false}
+                      onChange={(e) => updateRules({ playAfterPenalty: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="Common House Rule: If you have no move, you MUST draw cards until you get a playable one. Use with caution!">
+                    <div className="rule-label-group">
+                      <span>Forced Draw (No Slang)</span>
+                      <small>Draw until playable</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.forcedDrawPass ?? false}
+                      onChange={(e) => updateRules({ forcedDrawPass: e.target.checked })}
+                    />
+                  </label>
+                  <label className="rule-item" title="Momentum Rule: Playing two or more Reverses (in Multi-Play) or playing a Reverse in 1v1 grants you an immediate extra turn.">
+                    <div className="rule-label-group">
+                      <span>Special Reverse</span>
+                      <small>1v1 Momentum / Double Reverse</small>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={gameState.hostUserId !== userId}
+                      checked={gameState.rules?.specialReverse ?? true}
+                      onChange={(e) => updateRules({ specialReverse: e.target.checked })}
                     />
                   </label>
                 </div>
