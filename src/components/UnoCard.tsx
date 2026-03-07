@@ -14,7 +14,7 @@ interface CardProps {
     noLayout?: boolean;
     highlight?: boolean;
 }
-const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden, noLayout, highlight }) => {
+const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden, highlight }) => {
     const getColor = (color: string) => {
         if (hidden) return 'linear-gradient(135deg, #1e293b, #0f172a)';
         switch (color) {
