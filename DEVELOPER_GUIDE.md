@@ -1,84 +1,107 @@
-# UNO Game: Comprehensive Developer Guide
+# UNO Game: Comprehensive Developer & Architecture Guide
 
-This document provides a technical overview of the UNO Game codebase, covering architecture, logic flow, and component responsibilities.
+This document serves as the ultimate technical manual for the UNO Game application. It provides an expertly detailed breakdown of every feature, function, game rule, and architectural decision within the codebase.
 
-## Architecture Overview
+## 1. System Architecture Matrix
 
-The application follows a **Real-time Client-Server** architecture:
-- **Server**: Node.js with Socket.IO for state management and game logic.
-- **Client**: React (Vite) with Framer Motion for a high-performance, animated UI.
-- **Communication**: Bidirectional event-based syncing via Socket.IO.
+The application is built on a **Real-time Stateful Client-Server** architecture.
 
----
-
-## 1. Project Structure
-
-### Server (`/server`)
-- `index.js`: Entry point. Sets up Express/Socket.IO and routes incoming events to services.
-- `state.js`: Centralized volatile storage for active rooms and player connections.
-- `services/`:
-    - `playerActionService.js`: Core game rules engine. Handles card plays, drawing, and penalties.
-    - `botService.js`: AI tactical engine. Uses a scoring matrix to simulate human-like decision making.
-- `utils/`:
-    - `gameCore.js`: Workflow for starting games, dealing cards, and turn advancement.
-    - `deck.js`: Deck generation logic (colors, values, and quantities).
-
-### Client (`/src`)
-- `App.tsx`: The "Brain". Manages socket connections, global state syncing, and view switching (Lobby vs. Game).
-- `components/`:
-    - `Game.tsx`: The "Arena". Handles local UI state, drag-and-drop (Reorder), and circular layout math.
-    - `Lobby.tsx`: Landing page for room joining and initial setup.
-    - `UnoCard.tsx`: Primitive component for rendering cards with dynamic themes and states.
-- `App.css`: The "Design System". Contains all glassmorphism, glitches, and responsive media queries.
+### Technology Stack
+*   **Backend / Server:** Node.js, Express, Socket.IO.
+*   **Frontend / Client:** React 19, Vite, TypeScript, Framer Motion (for physics-based animations).
+*   **State Protocol:** Bidirectional, event-driven syncing using websockets. The server is the absolute source of truth; clients simply dispatch intents and render the synchronized state.
 
 ---
 
-## 2. Key Technical Flows
+## 2. Server Architecture & Functions (`/server`)
 
-### A. The Game Loop
-1.  **Action**: Client emits an event (e.g., `play_sequence`).
-2.  **Validation**: `playerActionService.js` verifies the move against the top card and current rules.
-3.  **State Mutation**: Server updates the room object (e.g., moves card from hand to discard pile).
-4.  **Sync**: Server emits `game_update` to all clients in the room.
-5.  **Render**: Clients receive the new state; Framer Motion animates the changes automatically.
+The server is responsible for enforcing rules, validating moves, managing active connections, simulating AI, and broadcasting game states.
 
-### B. AI (Bot) Decision Logic
-Bots operate in `botService.js` with a priority scoring system:
-- **High Priority (100 pts)**: Stacking onto a Draw War (defensive play).
-- **Medium Priority (50 pts)**: Matching current color/value.
-- **Low Priority (20-25 pts)**: Playing Wild cards.
-- **Strategic Color Choice**: Bots pick the color they hold the most in their hand.
+### A. Core Entry & Routing (`index.js`)
+*   **`setupGlobalMiddleware` / `setupCors`:** Configures HTTP server security and sets up the socket layer.
+*   **`io.on('connection')`:** The main event listener block orchestrating client interactions.
+    *   **`join_room`:** Initializes or joins a room. Sets up default game configuration and custom rule definitions.
+    *   **`start_game`:** Transitions room state from Lobby to Active Game, triggering deck generation and dealing.
+    *   **`play_sequence`:** Routes user moves to the `playerActionService`.
+    *   **`draw_card` / `pass_turn`:** Handles deck interactions when a player has no valid cards or chooses not to play.
+    *   **`say_uno` / `call_no_uno`:** Manages the penalization system for shouting UNO! or catching players who forgot.
 
-### C. Responsive Arena Math
-The player orbit in `Game.tsx` is calculated procedurally:
-- Uses `Math.cos` and `Math.sin` to place players in an ellipse.
-- Radius and Center-Y shift dynamically based on `window.innerWidth` and `window.innerHeight`.
-- Landscape vs. Portrait modes have unique arc constraints to prevent UI overlapping.
+### B. Game State Management (`state.js` & `gameCore.js`)
+*   **`rooms` Map:** In-memory store holding every active session, including players, deck, discard pile, active rules, turn index, and scores.
+*   **`generateDeck()`:** Dynamically builds a standard deck (108 cards): 4 colors, numbers 0-9, skips, reverses, +2s, wild, and +4 wild.
+*   **`shuffle()` / `dealCards()`:** Uses Fisher-Yates shuffle algorithms. Calculates remaining deck size and automatically reshuffles the discard pile if the deck runs out.
+*   **`advanceTurn(room, skipCount)`:** Core engine utility calculating the next active player. Resolves vector direction (clockwise/counter-clockwise), jumps over eliminated players in non-standard modes, and applies specific `skipCount` logic.
+
+### C. Rule Enforcement Engine (`playerActionService.js`)
+This is the heart of the game logic. Every card play goes through strict validation.
+*   **`isPlayValid(card, topCard, activeWar, currentSuit)`:** Comprehensive check matrix. Ensures colors match, values map, or wildcards are legally permitted. Interlocks with the `pendingDrawCount` (Draw War system).
+*   **`processPlaySequence(room, player, cards)`:** Evaluates Multi-Play functionality. Confirms that if a user submits multiple cards (e.g., three Red 5s), they all have identical values and are valid plays.
+*   **`applyCardEffects(room, playedCards)`:** Evaluates side effects based on card types.
+    *   **Reverses:** Flips `room.direction`. In 1v1 mode, reverses act as Skips (grants an extra turn).
+    *   **Skips:** Increments the internal skip counter to jump the next player.
+    *   **+2 / +4 (Draw Wars):** Adds to `room.pendingDrawCount` instead of forcing an immediate draw, allowing the next player to chain/stack another + card to pass the penalty.
+*   **`handleUNO`:** Manages the boolean `hasSaidUno` flag for players at 1 card. Applies 2-card penalties for `call_no_uno` events.
+
+### D. Artificial Intelligence (`botService.js`)
+The AI simulates human decision-making using a priority-driven heuristic matrix.
+*   **`processBotTurn(room, bot)`:** The main entry loop. Simulates "thinking time" using timeouts before emitting an action, preventing the game from moving faster than humans can process.
+*   **`evaluateHand(hand, topCard, warActive)`:** Deep analysis function rating every playable card via a scoring system:
+    *   *Score 100:* Stacking a + card during an active Draw War (Absolute defense).
+    *   *Score 50-70:* Matching current color/value. Prefers dropping higher point cards (Action cards) earlier than number cards.
+    *   *Score 20-30:* Wild cards (Kept as last-resort lifelines unless forced to play).
+*   **`determineOptimalColor(hand)`:** When playing a Wild card, the bot scans its own hand, tallies color distributions, and strategically declares the color it possesses the most of.
 
 ---
 
-## 3. Custom Rules Engine
-The engine supports heavy customization via the `room.rules` object:
-- **Draw War**: Stacking +2/+4 cards.
-- **Special Reverse**: 1v1 momentum and double-reverse extra turns.
-- **Multi-Play**: Playing multiple cards of the same value.
-- **Game Modes**: 
-    - `standard`: First to finish wins.
-    - `tournament (LMS)`: Eliminated players watch until one is left.
-    - `points`: Rounds continue until a target score is reached.
+## 3. Client Architecture & UI (`/src`)
+
+The client focuses on immersive rendering, 3D math, animations, and providing a responsive command center.
+
+### A. Central Sync & Routing (`App.tsx`)
+*   **`Socket Context:`** Maintains a single socket connection throughout the lifecycle.
+*   **`Room Sync:`** Listens to `game_update` events and replaces the local React state with the authoritative server object.
+*   **`View Router:`** Dynamically switches rendering between `<Lobby />` (configuration) and `<Game />` (active match) based on `gameState.status`.
+
+### B. The 3D Render Arena (`Game.tsx`)
+This is the most mathematically complex view, rendering the game board in pseudo-3D utilizing CSS transforms and trigonometric positioning.
+*   **`arenaConfig`:** Defines spatial boundaries (radius X/Y, orbit centers). Distinct configurations dynamically apply based on whether the device is Desktop, Landscape Mobile, or Portrait Mobile.
+*   **`getSeatPosition(index, total)`:** Calculates the geometric position of opponents around an ellipse.
+    *   *Polar Math:* Uses `Math.sin`/`Math.cos` to calculate X/Y coordinates.
+    *   *Constraints Solver:* Prevents players from overlapping the center game board or drifting off the edge of the screen.
+    *   *Perspective Scaling:* Computes depth factors to make players "further away" (top of orbit) visibly smaller than players "closer" (bottom of orbit).
+*   **`Multi-Layer Z-Indexing:`** Solves 3D occlusion bugs by maintaining strictly decoupled layers.
+    *   *Layer 1 (Cards/Hands):* Physically sort front-to-back based on depth math.
+    *   *Layer 2 (Nametags):* An invisible ghosting layer set to `z-index: 100000` to ensure text is never covered by standard 3D elements.
+*   **`Hand Command Center:`** The player's interaction zone.
+    *   *Panoramic Fanning:* Computes aggressive margins and rotational degrees using `Reorder.Group` to fan cards smoothly like a real hand of Uno.
+    *   *Multi-Select:* UI mechanics allowing users to buffer multiple identical cards before submitting the `play_sequence` event.
+
+### C. UI Primitives & Animations (`UnoCard.tsx` & `App.css`)
+*   **`UnoCard.tsx`:** Renders exact SVG/CSS replicas of Uno cards. Handles themes (Red, Blue, Green, Yellow, Wild, Dark Mode logic).
+*   **Animations:** Powered by `framer-motion` (`AnimatePresence`, spring transitions).
+*   **`App.css` (The Design System):** 
+    *   Contains deep integration with CSS Variables for dynamic heights/widths.
+    *   Features glassmorphism `backdrop-filters`, heavy `box-shadow` rendering, and specific `@keyframes` for "Active turn" pulses.
 
 ---
 
-## 4. Developer Cheat Sheet
+## 4. Comprehensive Feature Overview
 
-### Adding a New Rule
-1.  Add the rule to the `rules` object in `server/index.js` (`join_room`).
-2.  Update `server/services/playerActionService.js` to check `room.rules.yourRule`.
-3.  Add a UI toggle in `src/App.tsx` (Lobby settings).
+### Game Modes
+1.  **Standard Mode:** Classic Uno. The first player to clear their hand immediately wins the game.
+2.  **Last Man Standing (LMS):** Battle-Royale style. When a player clears their hand, they are marked "Finished" and spectate. The game continues until only one player remains holding cards (the ultimate loser).
+3.  **Points Mode:** Competitive scaling. Each round concludes when a player finishes. The winner earns points based on the cards left in opponents' hands. The game auto-resets rounds until a specified Target Score is reached.
 
-### Modifying Card Visuals
-Edit `src/components/UnoCard.tsx`. It uses CSS variables defined in `App.css` to handle colors and glows.
+### Rule Modifiers (Configurable in Lobby)
+*   **Stacking (Draw Wars):** Allows players to chain +2s onto +2s, and +4s onto +4s. The penalty accumulates until a player cannot respond, forcing them to draw the massive total.
+*   **Draw Sequencing:** If a player has no moves, they continually draw from the deck until a valid, playable card is drawn (or they can optionally pass if configured).
+*   **Multi-Play:** Advanced mechanic enabling a player to discard multiple identical cards (e.g., two Green 7s) in a single turn to rapidly clear their hand.
+*   **Special Reverse (1v1):** Fixes standard Uno rules where a Reverse card played with only two players acts as a Skip, giving the player a consecutive turn.
 
-### Debugging
-- **Server Logs**: Check `server/index.js` console output for move rejections.
-- **Client Logs**: Check the browser console; `App.tsx` logs all emitted socket events.
+---
+
+## 5. Extensibility & Future Development
+
+*   **Adding New Cards:** Create the logic handler in `applyCardEffects` (Server), add the card definition to `generateDeck` (Server), and update switch statements in `UnoCard.tsx` (Client).
+*   **Adding Visual Themes:** Update the CSS variables inside `App.css` and map them to game states inside `Game.tsx`.
+*   **Server Scalability:** The `state.js` in-memory store can be swapped for a Redis instance to allow multi-server scaling if required.
