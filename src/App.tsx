@@ -131,6 +131,9 @@ const App: React.FC = () => {
       } else if (action.details?.hitCount > 0 && !action.details?.isStackingAction) {
         eventType = 'HIT ALL';
         eventCount = action.details.hitCount;
+      } else if (action.details?.targetAmount > 0 && !action.details?.isStackingAction) {
+        eventType = '🎯 ' + (action.details.targetName?.split(' ')[0] || 'SOMEONE').toUpperCase();
+        eventCount = action.details.targetAmount;
       } else if (action.details?.isStackingAction) {
         eventType = 'STACKED!';
         eventCount = (action.details.hitCount || 0) + (action.details.totalDrawAmount || 0);

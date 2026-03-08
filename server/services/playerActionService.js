@@ -150,7 +150,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         }
     }
 
-    let totalDraw = 0, revCount = 0, skipCount = 0, hitAllValue = 0;
+    let totalDraw = 0, revCount = 0, skipCount = 0, hitAllValue = 0, targetDrawValue = 0;
     const discardAllBatch = [];
 
     cards.forEach((card, index) => {
@@ -205,45 +205,50 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         // Targeted Draw Logic
         if (card.value.includes('TargetDraw')) {
             const amount = card.value.includes('4') ? 4 : 2;
-            const target = room.players.find(p => p.userId === targetUserId);
-            if (target) {
-                while (room.deck.length < amount && room.discardPile.length > 1) {
-                    refillDeckIfNeeded(room);
-                }
-                const drawn = room.deck.splice(0, amount);
-                target.hand.push(...drawn);
-                target.saidUno = false;
-
-                // Track targeting for UI history
-                action.details = action.details || {};
-                action.details.targetName = target.name;
-                action.details.targetAmount = amount;
-            }
+            targetDrawValue += amount;
         }
 
         room.discardPile.push(card);
     });
 
-    // Apply Effects: Draw War (Stacking/Contribute) vs Global Hit (Ping)
+    // Apply Effects: Draw War (Stacking/Contribute) vs Target/Global Hit
     if (room.rules?.drawWar && isStacking) {
-        // High Intensity Stack: Convert Hit-All into Stack Growth
+        // High Intensity Stack: Convert Hit-All and TargetDraw into Stack Growth
         if (hitAllValue > 0) {
             totalDraw += hitAllValue;
             hitAllValue = 0; // Negated global effect for local war escalation
         }
-    } else if (hitAllValue > 0) {
-        // Standard Ping: Everyone else draws immediately
-        room.players.forEach(p => {
-            if (p.userId !== player.userId && !p.isSpectator) {
-                while (room.deck.length < hitAllValue && room.discardPile.length > 1) {
+        if (targetDrawValue > 0) {
+            totalDraw += targetDrawValue;
+            targetDrawValue = 0; // Negated targeting effect for local war escalation
+        }
+    } else {
+        if (hitAllValue > 0) {
+            // Standard Ping: Everyone else draws immediately
+            room.players.forEach(p => {
+                if (p.userId !== player.userId && !p.isSpectator) {
+                    while (room.deck.length < hitAllValue && room.discardPile.length > 1) {
+                        refillDeckIfNeeded(room);
+                    }
+                    const drawn = room.deck.splice(0, hitAllValue);
+                    p.hand.push(...drawn);
+                    p.saidUno = false;
+                }
+            });
+            // hitAllValue is NOT added to pendingDrawCount here, so no war is started
+        }
+
+        if (targetDrawValue > 0 && targetUserId) {
+            const target = room.players.find(p => p.userId === targetUserId);
+            if (target) {
+                while (room.deck.length < targetDrawValue && room.discardPile.length > 1) {
                     refillDeckIfNeeded(room);
                 }
-                const drawn = room.deck.splice(0, hitAllValue);
-                p.hand.push(...drawn);
-                p.saidUno = false;
+                const drawn = room.deck.splice(0, targetDrawValue);
+                target.hand.push(...drawn);
+                target.saidUno = false;
             }
-        });
-        // hitAllValue is NOT added to pendingDrawCount here, so no war is started
+        }
     }
 
     room.skippedPlayers = []; // RESET for every play
@@ -268,7 +273,9 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
             skipCount,
             hitCount: hitAllValue,
             totalDrawAmount: totalDraw,
-            isStackingAction: isStacking && (totalDraw > 0 || hitAllValue > 0)
+            isStackingAction: isStacking && (totalDraw > 0 || hitAllValue > 0 || targetDrawValue > 0),
+            targetName: (targetDrawValue > 0 && targetUserId) ? room.players.find(p => p.userId === targetUserId)?.name : undefined,
+            targetAmount: targetDrawValue > 0 ? targetDrawValue : undefined
         }
     };
 
