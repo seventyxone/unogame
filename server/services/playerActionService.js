@@ -91,14 +91,14 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
 
     if (isStacking) {
         if (room.rules?.drawWar) {
-            if (cards[0].value.includes('Draw2') || cards[0].value.includes('Hit2') || cards[0].value.includes('Draw4') || cards[0].value.includes('Hit4')) {
-                const isTwo = cards[0].value.includes('2');
-                const isFour = cards[0].value.includes('4');
+            if (cards[0].value.includes('Draw2') || cards[0].value.includes('Hit2') || cards[0].value.includes('TargetDraw2') || cards[0].value.includes('Draw4') || cards[0].value.includes('Hit4') || cards[0].value.includes('TargetDraw4')) {
+                const isTwo = cards[0].value.includes('Draw2') || cards[0].value.includes('Hit2') || cards[0].value.includes('TargetDraw2');
+                const isFour = cards[0].value.includes('Draw4') || cards[0].value.includes('Hit4') || cards[0].value.includes('TargetDraw4');
                 const stackValue = topCard.value.includes('4') ? 4 : 2;
 
                 if (isTwo && (stackValue === 2 || (stackValue === 4 && room.rules?.allowDraw2OnDraw4))) {
                     if (stackValue === 4 && room.rules?.draw2OnDraw4ColorMatch) {
-                        if (cards[0].color === topCard.color) canPlayFirst = true;
+                        if (cards[0].color === topCard.color || cards[0].color === 'wild') canPlayFirst = true;
                     } else {
                         canPlayFirst = true;
                     }
