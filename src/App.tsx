@@ -143,7 +143,7 @@ const App: React.FC = () => {
       }
 
       if (action.isAutoUno) {
-        eventType = 'AUTO UNO!';
+        eventType = 'UNO!';
       }
 
       const warResult = action.warResult;
@@ -265,9 +265,9 @@ const App: React.FC = () => {
     socket.emit('start_game', { roomId, userId });
   };
 
-  const playSequence = (cardIds: string[], newColor?: string, isUno?: boolean) => {
-    console.log(`[App] Emitting play_sequence: Room=${roomId}, Cards=${JSON.stringify(cardIds)}, isUno=${isUno}`);
-    socket.emit('play_sequence', { roomId, cardIds, newColor, userId, isUno });
+  const playSequence = (cardIds: string[], newColor?: string, isUno?: boolean, targetUserId?: string) => {
+    console.log(`[App] Emitting play_sequence: Room=${roomId}, Cards=${JSON.stringify(cardIds)}, isUno=${isUno}, Target=${targetUserId}`);
+    socket.emit('play_sequence', { roomId, cardIds, newColor, userId, isUno, targetUserId });
   };
 
   const updateRules = (rules: any) => {
