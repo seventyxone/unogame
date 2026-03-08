@@ -341,25 +341,44 @@ const Game: React.FC<Props> = ({
         const radiusFactor = isHandMinimized ? 0.75 : 1.0;
         const aspectRatio = window.innerWidth / Math.max(window.innerHeight, 1);
 
-        // Dynamic arc: narrow for few players, wide for many
-        const arcSpread = Math.min(260, 140 + (total * 15));
+        // --- NEW DYNAMIC ARC LOGIC ---
+        // Narrow the arc and lower the radius for few players so they feel centered and large.
+        // Wide for many players to prevent overlapping.
+        let arcSpread = 0;
+        let dynamicRadiusY = 0;
+        let baseScaleFactor = 1.0;
+
+        if (total === 1) {
+            arcSpread = 0;
+            dynamicRadiusY = 55; // Pull it slightly down to be larger
+            baseScaleFactor = 1.35; // Buff size significantly for 1v1
+        } else if (total === 2) {
+            arcSpread = 80;
+            dynamicRadiusY = 50;
+            baseScaleFactor = 1.25;
+        } else if (total === 3) {
+            arcSpread = 140;
+            dynamicRadiusY = 48;
+            baseScaleFactor = 1.15;
+        } else {
+            arcSpread = Math.min(260, 140 + (total * 15));
+            dynamicRadiusY = isPortrait ? (total > 5 ? 50 : 60) : (total > 5 ? 40 : 45);
+        }
+
         const centerAngle = 270; // Top center
         const startAngle = ((centerAngle - arcSpread / 2) * Math.PI) / 180;
         const endAngle = ((centerAngle + arcSpread / 2) * Math.PI) / 180;
 
         const step = total > 1 ? (endAngle - startAngle) / (total - 1) : 0;
-        const angle = total === 1 ? (startAngle + endAngle) / 2 : startAngle + (step * index);
+        const angle = total === 1 ? (Math.PI * 1.5) : startAngle + (step * index);
 
-        // ANTI-SMUSH REACH
         // radiusX: We dampen the horizontal expansion on very wide screens to keep it more circular/oval
         const desktopXBase = isPortrait ? 40 : Math.min(42, 35 + (aspectRatio * 1.5));
         const radiusX = (isMobile ? (total > 5 ? 35 : 40) : desktopXBase) * radiusFactor;
 
-        // radiusY: Fill more vertical space on desktop while staying clear of the bottom hand
-        // Mobile landscape still needs to be tight (32), but desktop can afford more (42+)
-        const desktopYBase = isPortrait ? (total > 5 ? 50 : 60) : (total > 5 ? 40 : 45);
+        // radiusY: Vertical spacing adjusted by dynamicRadiusY
         const mobileYBase = isPortrait ? (total > 5 ? 45 : 55) : 32;
-        const radiusY = (isMobile ? mobileYBase : desktopYBase) * radiusFactor;
+        const radiusY = (isMobile ? mobileYBase : dynamicRadiusY) * radiusFactor;
 
         // Center shift: Anchored higher for portrait
         const centerY = isPortrait ? 35 : 42;
@@ -369,11 +388,11 @@ const Game: React.FC<Props> = ({
 
         // AGGRESSIVE SCALING FOR CARDS
         // Top: 0.45, Bottom: 1.15
-        const cardScale = 0.45 + (depthFactor * 0.7);
+        const cardScale = (0.45 + (depthFactor * 0.7)) * baseScaleFactor;
 
         // STABLE SCALING FOR NAMETAGS
         // Top: 0.8, Bottom: 1.05
-        const labelScale = 0.8 + (depthFactor * 0.25);
+        const labelScale = (0.8 + (depthFactor * 0.25)) * baseScaleFactor;
 
         const crowdingScale = total > 5 ? Math.max(0.75, 1 - (total - 5) * 0.05) : 1;
 
