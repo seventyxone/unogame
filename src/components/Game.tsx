@@ -17,19 +17,21 @@ const MiniHand: React.FC<{ hand: any[], active?: boolean }> = ({ hand, active })
         }
     }, [hand.length, animatedHand.length]);
 
+    const isCrowded = animatedHand.length > 5;
+
     return (
-        <div className={`opponent-hand fanned ${active ? 'active' : ''}`}>
+        <div className={`opponent-hand fanned ${active ? 'active' : ''} ${isCrowded ? 'crowded' : ''}`}>
             {animatedHand.map((card: any, idx: number) => {
                 // Fan calculations
                 const total = animatedHand.length;
                 const mid = (total - 1) / 2;
 
-                // Tighten fan as hand grows to prevent extreme horizontal stretching
-                const fanAngle = Math.max(15, 40 - (total * 1.5));
-                const rotation = (idx - mid) * (fanAngle / Math.max(total, 5));
+                // Tighter fan as hand grows to prevent extreme horizontal stretching
+                const fanAngle = Math.max(12, 35 - (total * 1.8));
+                const rotation = (idx - mid) * (fanAngle / Math.max(total, 4));
 
-                // Tighten spacing offset
-                const yOffset = Math.abs(idx - mid) * 1.5;
+                // Spacing offset
+                const yOffset = Math.abs(idx - mid) * 1.2;
 
                 return (
                     <motion.div
@@ -54,30 +56,7 @@ const MiniHand: React.FC<{ hand: any[], active?: boolean }> = ({ hand, active })
     );
 };
 
-const LiveScoreboard: React.FC<{ gameState: any }> = ({ gameState }) => {
-    const [isMinimized, setIsMinimized] = useState(false);
 
-    if (gameState.rules?.gameMode !== 'points' || !gameState.scores) return null;
-
-    return (
-        <div className={`live-scoreboard-container ${isMinimized ? 'minimized' : ''}`}>
-            <div className="scoreboard-header" onClick={() => setIsMinimized(!isMinimized)}>
-                <span>POINTS MODE // LEADERBOARD</span>
-                <button className="scoreboard-toggle-btn">{isMinimized ? '+' : '−'}</button>
-            </div>
-            {!isMinimized && (
-                <div className="scoreboard-list">
-                    {gameState.players.map((p: any) => (
-                        <div key={p.userId} className={`scoreboard-row ${gameState.scores[p.userId] >= (gameState.rules.maxRounds || 3) ? 'near-win' : ''}`}>
-                            <span className="p-name">{p.name}</span>
-                            <span className="p-score">{gameState.scores[p.userId] || 0} / {gameState.rules.maxRounds || 3}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
 
 interface Props {
     gameState: any;
@@ -336,75 +315,91 @@ const Game: React.FC<Props> = ({
 
     // Calculate circular positions for opponents with perspective scaling
     const getSeatPosition = (index: number, total: number, isActive: boolean = false) => {
-        const isMobile = window.innerWidth <= 480;
-        const isPortrait = window.innerHeight > window.innerWidth;
-        const radiusFactor = isHandMinimized ? 0.75 : 1.0;
-        const aspectRatio = window.innerWidth / Math.max(window.innerHeight, 1);
+        const isPortrait = viewportHeight > viewportWidth;
+        const aspectRatio = viewportWidth / Math.max(viewportHeight, 1);
+        const radiusFactor = isHandMinimized ? 0.85 : 1.0;
 
-        // --- NEW DYNAMIC ARC LOGIC ---
-        // Narrow the arc and lower the radius for few players so they feel centered and large.
-        // Wide for many players to prevent overlapping.
-        let arcSpread = 0;
-        let dynamicRadiusY = 0;
-        let baseScaleFactor = 1.0;
+        // 1. DYNAMIC SCALE ENGINE (Continuous Power Law)
+        // Stricter decay: total=1 => 2.2x, total=7 => 1.1x, total=10 => 0.9x
+        const baseScaleFactor = 0.8 + (1.4 / Math.pow(Math.max(1, total), 0.7));
+        const crowdingScale = total > 4 ? Math.max(0.45, 1 - (total - 4) * 0.08) : 1;
 
-        if (total === 1) {
-            arcSpread = 0;
-            // Pull them DOWN from the top edge (smaller radiusY pushes them towards centerY)
-            dynamicRadiusY = 8;
-            baseScaleFactor = 2.2; // Massive for 1v1
-        } else if (total === 2) {
-            arcSpread = 80;
-            dynamicRadiusY = 30;
-            baseScaleFactor = 1.35;
-        } else if (total === 3) {
-            arcSpread = 140;
-            dynamicRadiusY = 40;
-            baseScaleFactor = 1.25;
-        } else {
-            arcSpread = Math.min(260, 140 + (total * 15));
-            dynamicRadiusY = isPortrait ? (total > 5 ? 50 : 60) : (total > 5 ? 40 : 45);
-        }
+        // 2. DYNAMIC ARC SPREAD (Linear Growth with Cap)
+        // Narrower arc for high player count to keep them away from side edges
+        const maxSpread = isPortrait ? 210 : 250;
+        const arcSpread = total === 1 ? 0 : Math.min(maxSpread, 70 + (total * 20));
 
-        const centerAngle = 270; // Top center
+        // 3. ANGLE CALCULATIONS (Polar distribution)
+        const centerAngle = 270;
         const startAngle = ((centerAngle - arcSpread / 2) * Math.PI) / 180;
         const endAngle = ((centerAngle + arcSpread / 2) * Math.PI) / 180;
-
         const step = total > 1 ? (endAngle - startAngle) / (total - 1) : 0;
         const angle = total === 1 ? (Math.PI * 1.5) : startAngle + (step * index);
 
-        // radiusX: We dampen the horizontal expansion on very wide screens to keep it more circular/oval
-        const desktopXBase = isPortrait ? 40 : Math.min(42, 35 + (aspectRatio * 1.5));
-        const radiusX = (isMobile ? (total > 5 ? 35 : 40) : desktopXBase) * radiusFactor;
+        // 4. COORDINATE & BOUNDARY MATHEMATICS
+        // High orbit center for portrait to keep them from hitting the HUD
+        const orbitCenterY = isPortrait ? 28 : 38;
 
-        // radiusY: Vertical spacing adjusted by dynamicRadiusY
-        const mobileYBase = isPortrait ? (total > 5 ? 45 : 55) : 32;
-        const radiusY = (isMobile ? mobileYBase : dynamicRadiusY) * radiusFactor;
+        // Board location - shift lower in portrait to open up the arena center
+        const pxToVh = (px: number) => (px / viewportHeight) * 100;
+        const boardCenterY = isPortrait ? (65 + pxToVh(50)) : (40 + pxToVh(50));
 
-        // Center shift: Anchored higher for portrait
-        const centerY = isPortrait ? 35 : 42;
+        // Define Protective Buffer Zones (In VH/VW %)
+        const boardSafetyW = 14;
+        const boardSafetyH = 12;
+        const pushFactor = 1.4;
 
-        // DEPTH FACTOR (0 = Very top/furthest, 1 = Very bottom/closest)
-        const depthFactor = (Math.sin(angle) + 1) / 2;
+        // Target Radius (Initial)
+        // In portrait, we want a wider ellipse to push side players outwards
+        let rY = isPortrait ? 60 : 42;
+        let rX = isPortrait ? 45 : Math.min(50, 26 + (aspectRatio * 6));
 
-        // AGGRESSIVE SCALING FOR CARDS
-        // Top: 0.45, Bottom: 1.15
-        const cardScale = (0.45 + (depthFactor * 0.7)) * baseScaleFactor;
+        rY *= radiusFactor;
+        rX *= radiusFactor;
 
-        // STABLE SCALING FOR NAMETAGS
-        // Top: 0.8, Bottom: 1.05
-        const labelScale = (0.8 + (depthFactor * 0.25)) * baseScaleFactor;
+        const sinA = Math.sin(angle);
+        const cosA = Math.cos(angle);
 
-        const crowdingScale = total > 5 ? Math.max(0.75, 1 - (total - 5) * 0.05) : 1;
+        // --- CONSTRAINT SOLVER ---
+        // A. Viewport Edge Collision Detection
+        if (sinA < 0) {
+            const maxRYTop = (orbitCenterY - 6) / Math.abs(sinA); // 6% top margin
+            rY = Math.min(rY, maxRYTop);
+        }
+        const maxRXSide = (50 - 5) / Math.abs(cosA || 1); // 5% side margin
+        rX = Math.min(rX, maxRXSide);
 
-        // Z-Index: Higher sin(angle) means closer to user
-        const zIndex = 10 + Math.floor(depthFactor * 50);
+        // B. Board Overlap Prevention (Iterative Repulsion)
+        let seatX = 50 + rX * cosA;
+        let seatY = orbitCenterY + rY * sinA;
+
+        const distX = Math.abs(seatX - 50);
+        const distY = Math.abs(seatY - boardCenterY);
+
+        if (distX < boardSafetyW && distY < boardSafetyH) {
+            // Push it further out to clear the board center
+            rY *= pushFactor;
+            rX *= pushFactor;
+
+            // Re-apply Screen constraints after push
+            if (sinA < 0) rY = Math.min(rY, (orbitCenterY - 4) / Math.abs(sinA));
+            rX = Math.min(rX, (50 - 4) / Math.abs(cosA || 1));
+        }
+
+        // 5. DEPTH & RENDERING DATA (Z-Buffer management)
+        const depthFactor = (sinA + 1) / 2; // 0 = Distant (Top), 1 = Foreground (Bottom)
+
+        const cardScale = (0.5 + (depthFactor * 0.6)) * baseScaleFactor * crowdingScale;
+        const labelScale = (0.8 + (depthFactor * 0.2)) * baseScaleFactor;
+
+        // Map zIndex to clear the board (z-index 50) correctly
+        const zIndex = 10 + Math.floor(depthFactor * 100);
 
         return {
-            left: `${50 + radiusX * Math.cos(angle)}%`,
-            top: `${centerY + radiusY * Math.sin(angle)}%`,
-            cardScale: cardScale * crowdingScale * (isActive ? 1.1 : 1.0),
-            labelScale: labelScale * (isActive ? 1.05 : 1.0),
+            left: `${50 + rX * cosA}%`,
+            top: `${orbitCenterY + rY * sinA}%`,
+            cardScale: cardScale * (isActive ? 1.15 : 1.0),
+            labelScale: labelScale * (isActive ? 1.1 : 1.0),
             zIndex
         };
     };
@@ -437,8 +432,7 @@ const Game: React.FC<Props> = ({
                 {showHistory ? '✕' : '📋'}
             </button>
 
-            {/* Live Standings during game */}
-            <LiveScoreboard gameState={gameState} />
+
 
             {/* Spectator Global Badge */}
             <AnimatePresence>
@@ -516,6 +510,11 @@ const Game: React.FC<Props> = ({
                             </div>
                             <span className={`player-name-label ${showYourTurn ? 'your-turn-active pulse' : ''}`}>
                                 {showYourTurn ? 'YOUR TURN!' : me?.name}
+                                {gameState.rules?.gameMode === 'points' && gameState.scores && (
+                                    <span className={`score-badge mini ${gameState.scores[me?.userId] >= (gameState.rules.maxRounds || 3) - 1 ? 'near-win' : ''}`}>
+                                        {gameState.scores[me?.userId] || 0}/{gameState.rules.maxRounds || 3}
+                                    </span>
+                                )}
                             </span>
                         </div>
                         <div className="my-hand-wrapper">
@@ -631,6 +630,11 @@ const Game: React.FC<Props> = ({
                                         </div>
                                         <div className="opponent-tag isometric" style={{ transform: `scale(${pos.labelScale})` }}>
                                             <div className="tag-inner">{player.name}</div>
+                                            {gameState.rules?.gameMode === 'points' && gameState.scores && (
+                                                <div className={`score-badge animate-in ${gameState.scores[player.userId] >= (gameState.rules.maxRounds || 3) - 1 ? 'near-win' : ''}`}>
+                                                    {gameState.scores[player.userId] || 0}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -699,8 +703,8 @@ const Game: React.FC<Props> = ({
                                     )}
                                 </div>
                             </div>
-                            <div className="arena-indicators">
-                                <div className="direction-indicator-floating">
+                            <div className="arena-indicators central">
+                                <div className="direction-indicator-embedded">
                                     {gameState.direction === 1 ? '↻ CLOCKWISE' : '↺ ANTI-CLOCKWISE'}
                                 </div>
                             </div>
@@ -723,9 +727,31 @@ const Game: React.FC<Props> = ({
                                             {action.type === 'play' ? (
                                                 <div className="action-cards">
                                                     <div className="mini-card-row">
-                                                        {action.sequence.map((c: any, i: number) => (
-                                                            <div key={i} className={`mini-card ${c.color}`}>{c.value}</div>
-                                                        ))}
+                                                        {action.sequence.map((c: any, i: number) => {
+                                                            const val = c.value;
+                                                            const label = (/[a-zA-Z]/.test(val) && val.includes('4')) ? '+4' :
+                                                                (/[a-zA-Z]/.test(val) && val.includes('2')) ? '+2' :
+                                                                    val.includes('Skip') ? '🚫' :
+                                                                        val.includes('Reverse') ? '⇄' :
+                                                                            val.includes('DiscardAll') ? '🗑️' :
+                                                                                val;
+                                                            return <div key={i} className={`mini-card ${c.color}`}>{label}</div>;
+                                                        })}
+                                                        {action.purged && action.purged.length > 0 && (
+                                                            <>
+                                                                <span className="purged-label">PURGED:</span>
+                                                                {action.purged.map((c: any, i: number) => {
+                                                                    const val = c.value;
+                                                                    const label = (/[a-zA-Z]/.test(val) && val.includes('4')) ? '+4' :
+                                                                        (/[a-zA-Z]/.test(val) && val.includes('2')) ? '+2' :
+                                                                            val.includes('Skip') ? '🚫' :
+                                                                                val.includes('Reverse') ? '⇄' :
+                                                                                    val.includes('DiscardAll') ? '🗑️' :
+                                                                                        val;
+                                                                    return <div key={`p-${i}`} className={`mini-card ${c.color} ghost`}>{label}</div>;
+                                                                })}
+                                                            </>
+                                                        )}
                                                     </div>
                                                     {action.details && (
                                                         <div className="action-metadata">

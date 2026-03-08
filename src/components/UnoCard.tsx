@@ -48,8 +48,8 @@ const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden
             ) : (
                 <>
                     <div className="card-corner top-left">
-                        {card.value.includes('4') ? '+4' :
-                            card.value.includes('2') && !card.value.match(/^[02]$/) ? '+2' :
+                        {(card.value.match(/[a-z]/i) && card.value.includes('4')) ? '+4' :
+                            (card.value.match(/[a-z]/i) && card.value.includes('2')) ? '+2' :
                                 card.value.includes('SkipAll') ? '🚫👥' :
                                     card.value.includes('Skip') ? '🚫' :
                                         card.value.includes('Reverse') ? '⇄' :
@@ -60,8 +60,8 @@ const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden
                         <div className="center-value" style={{ color: card.color === 'wild' ? '#a855f7' : getColor(card.color) }}>
                             {card.value.includes('Target') ? '🎯' :
                                 card.value.includes('Hit') ? '💥' + (card.value.includes('4') ? '+4' : '+2') :
-                                    card.value.includes('Draw4') ? '+4' :
-                                        card.value.includes('Draw2') ? '+2' :
+                                    (card.value.includes('Draw4') || (card.value.match(/[a-z]/i) && card.value.includes('4'))) ? '+4' :
+                                        (card.value.includes('Draw2') || (card.value.match(/[a-z]/i) && card.value.includes('2'))) ? '+2' :
                                             card.value.includes('SkipAll') ? '🚫👥' :
                                                 card.value.includes('Skip') ? '🚫' :
                                                     card.value.includes('Reverse') ? '⇄' :
@@ -70,8 +70,8 @@ const UnoCard: React.FC<CardProps> = ({ card, onClick, disabled, isSmall, hidden
                         </div>
                     </div>
                     <div className="card-corner bottom-right">
-                        {card.value.includes('4') ? '+4' :
-                            card.value.includes('2') && !card.value.match(/^[02]$/) ? '+2' :
+                        {(card.value.match(/[a-z]/i) && card.value.includes('4')) ? '+4' :
+                            (card.value.match(/[a-z]/i) && card.value.includes('2')) ? '+2' :
                                 card.value.includes('SkipAll') ? '🚫👥' :
                                     card.value.includes('Skip') ? '🚫' :
                                         card.value.includes('Reverse') ? '⇄' :

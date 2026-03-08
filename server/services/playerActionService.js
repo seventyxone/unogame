@@ -111,7 +111,12 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
             canPlayFirst = cards[0].color === 'wild' || cards[0].color === topCard.color || cards[0].value === topCard.value;
         }
     } else {
-        canPlayFirst = cards[0].color === 'wild' || cards[0].color === topCard.color || cards[0].value === topCard.value || (topCard.originalColor && cards[0].color === topCard.color);
+        const isDiscardAllMatch = (cards[0].value.includes('DiscardAll') && topCard.value.includes('DiscardAll'));
+        canPlayFirst = cards[0].color === 'wild' ||
+            cards[0].color === topCard.color ||
+            cards[0].value === topCard.value ||
+            (topCard.originalColor && cards[0].color === topCard.color) ||
+            isDiscardAllMatch;
         // Custom stacking check for variations
         if (!canPlayFirst) {
             if (cards[0].value.includes('Skip') && topCard.value.includes('Skip')) canPlayFirst = true;
@@ -276,7 +281,8 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         type: 'play',
         userId: player.userId,
         userName: player.name,
-        sequence: [...cards, ...discardAllBatch].map(c => ({ ...c })),
+        sequence: cards.map(c => ({ ...c })),
+        purged: discardAllBatch.map(c => ({ ...c })),
         specialReverse: isSpecialReverse,
         isAutoUno: isUno,
         skippedPlayers: [],

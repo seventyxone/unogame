@@ -1901,16 +1901,21 @@ input:disabled {
   letter-spacing: 0.5px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
-  min-width: 100px;
-  max-width: 140px;
-  overflow: hidden;
+  min-width: 80px;
+  width: auto;
   transition: all 0.3s ease;
 }
 
+@media (max-width: 600px) {
+  .opponent-tag.isometric {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    min-width: 60px;
+  }
+}
+
 .tag-inner {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-count-badge {
@@ -2164,6 +2169,11 @@ input:disabled {
   transform: scale(0.9);
 }
 
+.opponent-hand.crowded .mini-card-wrapper {
+  margin-left: -65px !important;
+  transform: scale(0.85);
+}
+
 .mini-card-wrapper:first-child {
   margin-left: 0 !important;
 }
@@ -2231,6 +2241,23 @@ input:disabled {
 
 .mini-card.yellow {
   background-color: var(--uno-yellow);
+}
+
+.purged-label {
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  margin: 0 4px;
+}
+
+.mini-card.ghost {
+  opacity: 0.4;
+  transform: scale(0.9);
+  filter: grayscale(0.5);
 }
 
 .action-metadata {
@@ -2394,8 +2421,8 @@ input:disabled {
     padding: 3px 6px !important;
     font-size: 0.6rem !important;
     gap: 4px !important;
-    min-width: 70px !important;
-    max-width: 100px !important;
+    min-width: 60px !important;
+    width: auto !important;
   }
 
   .mini-hand {
@@ -2701,27 +2728,44 @@ input:disabled {
   border-radius: 12px !important;
 }
 
-.direction-indicator-floating {
+/* Central Indicator (Replaces floating one) */
+.arena-indicators.central {
   position: absolute;
-  top: -75px;
-  /* Tightened space */
+  top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: var(--uno-yellow);
-  font-size: 0.65rem;
-  font-weight: 900;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  padding: 5px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  white-space: nowrap;
   pointer-events: none;
-  z-index: 100;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 }
+
+.direction-indicator-embedded {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(5px);
+  color: var(--uno-yellow);
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  padding: 4px 12px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  opacity: 0.8;
+  transform: translateY(-85px);
+  /* Position it slightly above the piles cluster */
+}
+
+@media (max-width: 600px) {
+  .direction-indicator-embedded {
+    transform: translateY(-65px);
+    /* Even tighter on mobile */
+    font-size: 0.5rem;
+  }
+}
+
 
 
 .my-hand-wrapper {
@@ -3042,106 +3086,58 @@ input:disabled {
   opacity: 0.8;
 }
 
-/* --- Live Scoreboard Formatting --- */
-.live-scoreboard-container {
-  position: absolute;
-  top: 1.5rem;
-  left: 1.5rem;
-  background: rgba(15, 23, 42, 0.85);
-  min-width: 260px;
-  z-index: 1000;
+
+/* Integrated Score Badges */
+.score-badge {
+  background: var(--uno-blue);
+  color: white;
+  padding: 2px 8px;
   border-radius: 12px;
-  padding: 1.25rem;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  pointer-events: auto;
-  /* Allow interactions for minimize and dragging */
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.live-scoreboard-container.minimized {
-  min-width: unset;
-  padding: 0.75rem 1rem;
-}
-
-.scoreboard-header {
   font-size: 0.75rem;
-  color: #94a3b8;
-  letter-spacing: 2px;
-  margin-bottom: 1rem;
   font-weight: 900;
-  text-transform: uppercase;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 0.5rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
+  margin-left: 8px;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
 }
 
-.live-scoreboard-container.minimized .scoreboard-header {
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
+.score-badge.mini {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
+  margin-left: 10px;
 }
 
-.scoreboard-toggle-btn {
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: bold;
-  cursor: pointer;
-  padding: 0;
-  margin-left: 1rem;
-  transition: color 0.2s;
-  pointer-events: none;
-  /* Let parent click handle it */
+.score-badge.near-win {
+  background: var(--uno-yellow);
+  color: #000;
+  box-shadow: 0 0 15px rgba(234, 179, 8, 0.6);
+  animation: score-pulse 1s infinite alternate;
 }
 
-.scoreboard-header:hover {
-  filter: brightness(1.2);
+@keyframes score-pulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.1);
+  }
 }
 
-.scoreboard-header:hover .scoreboard-toggle-btn {
-  color: #fbbf24;
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.scoreboard-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.scoreboard-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.scoreboard-row.near-win {
-  background: rgba(255, 204, 0, 0.15);
-  border: 1px solid rgba(255, 204, 0, 0.4);
-}
-
-.scoreboard-row.near-win .p-score {
-  color: #fbbf24;
-  font-weight: 900;
-  text-shadow: 0 0 15px rgba(255, 204, 0, 0.5);
-}
-
-.p-name {
-  color: #f8fafc;
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.p-score {
-  color: #e2e8f0;
-  font-weight: 900;
-  font-size: 1.1rem;
+.animate-in {
+  animation: animate-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
