@@ -240,13 +240,13 @@ const Game: React.FC<Props> = ({
     };
 
     const isCardPlayableInWar = (card: any) => {
-        const isTwo = card.value.includes('2');
-        const isFour = card.value.includes('4');
+        const isTwo = card.value.includes('Draw2') || card.value.includes('Hit2') || card.value.includes('TargetDraw2');
+        const isFour = card.value.includes('Draw4') || card.value.includes('Hit4') || card.value.includes('TargetDraw4');
         const topIsFour = topCard.value.includes('4');
 
         if (isTwo && (!topIsFour || gameState.rules?.allowDraw2OnDraw4)) {
             if (topIsFour && gameState.rules?.draw2OnDraw4ColorMatch) {
-                return card.color === topCard.color;
+                return card.color === topCard.color || card.color === 'wild';
             }
             return true;
         }
