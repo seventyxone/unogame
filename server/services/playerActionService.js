@@ -124,10 +124,14 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
     if (!canPlayFirst) {
         if (socketId) io.to(socketId).emit('error', 'Card does not match the discard pile!');
         if (!socketId) {
-            console.log(`[BOT ERROR] Bot tried illegal move. Forcing pass.`);
-            room.currentPlayerIndex = nextPlayerIndex(room);
-            io.to(roomId).emit('game_update', room);
-            getBotService().checkBotTurn(roomId);
+            console.log(`[BOT ERROR] Bot tried illegal move. Forcing pass or draw.`);
+            if (isStacking) {
+                performDrawCard(roomId, player.userId);
+            } else {
+                room.currentPlayerIndex = nextPlayerIndex(room);
+                io.to(roomId).emit('game_update', room);
+                getBotService().checkBotTurn(roomId);
+            }
         }
         return;
     }
@@ -357,13 +361,13 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
 
         const currentTop = room.discardPile[room.discardPile.length - 1];
         const hasResponse = room.rules?.drawWar && nextP.hand.some(c => {
-            const isTwo = c.value.includes('2');
-            const isFour = c.value.includes('4');
+            const isTwo = c.value.includes('Draw2') || c.value.includes('Hit2') || c.value.includes('TargetDraw2');
+            const isFour = c.value.includes('Draw4') || c.value.includes('Hit4') || c.value.includes('TargetDraw4');
             const topIsFour = currentTop.value.includes('4');
 
             if (isTwo && (!topIsFour || room.rules?.allowDraw2OnDraw4)) {
                 if (topIsFour && room.rules?.draw2OnDraw4ColorMatch) {
-                    return c.color === currentTop.color;
+                    return c.color === currentTop.color || c.color === 'wild';
                 }
                 return true;
             }
@@ -567,8 +571,16 @@ const handleAcceptChallenge = (roomId, userId) => {
     // If Draw War is active and player can stack, skip the automatic drawing
     const canStack = room.rules?.drawWar && targetPlayer.hand.some(c => {
         const top = room.discardPile[room.discardPile.length - 1];
-        if (c.value === 'Draw4' && (top.value === 'Draw4' || room.rules?.allowDraw4OnDraw2)) return true;
-        if (c.value === 'Draw2' && (top.value === 'Draw2' || room.rules?.allowDraw2OnDraw4)) return true;
+        const isTwo = c.value.includes('Draw2') || c.value.includes('Hit2') || c.value.includes('TargetDraw2');
+        const isFour = c.value.includes('Draw4') || c.value.includes('Hit4') || c.value.includes('TargetDraw4');
+
+        if (isFour && (top.value.includes('4') || room.rules?.allowDraw4OnDraw2)) return true;
+        if (isTwo && (top.value.includes('2') || room.rules?.allowDraw2OnDraw4)) {
+            if (top.value.includes('4') && room.rules?.draw2OnDraw4ColorMatch) {
+                return c.color === top.color || c.color === 'wild';
+            }
+            return true;
+        }
         return false;
     });
 

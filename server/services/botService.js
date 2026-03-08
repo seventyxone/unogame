@@ -80,8 +80,8 @@ const checkBotTurn = (roomId) => {
                     let score = 0;
                     if (stacking) {
                         if (room.rules?.drawWar) {
-                            const isTwo = card.value.includes('2');
-                            const isFour = card.value.includes('4');
+                            const isTwo = card.value.includes('Draw2') || card.value.includes('Hit2') || card.value.includes('TargetDraw2');
+                            const isFour = card.value.includes('Draw4') || card.value.includes('Hit4') || card.value.includes('TargetDraw4');
                             const topIsFour = top.value.includes('4');
 
                             if (isFour && (topIsFour || room.rules?.allowDraw4OnDraw2)) {
@@ -90,7 +90,8 @@ const checkBotTurn = (roomId) => {
                             } else if (isTwo && (!topIsFour || room.rules?.allowDraw2OnDraw4)) {
                                 // Important: Check color match rule for bots too
                                 if (topIsFour && room.rules?.draw2OnDraw4ColorMatch) {
-                                    if (card.color === top.color) {
+                                    // if top is wild, its color is dynamic.
+                                    if (card.color === top.color || card.color === 'wild') {
                                         valid = true;
                                         score = 90;
                                     }
@@ -131,6 +132,16 @@ const checkBotTurn = (roomId) => {
 
                 if (bestSeq.length > 0) {
                     let selectedColor = undefined;
+                    let targetUserId = undefined;
+
+                    if (bestSeq[0].value.includes('Target')) {
+                        const others = room.players.filter(p => !p.isSpectator && p.userId !== player.userId);
+                        if (others.length > 0) {
+                            targetUserId = others[Math.floor(Math.random() * others.length)].userId;
+                            console.log(`[BOT] ${player.name} targeting ${targetUserId}.`);
+                        }
+                    }
+
                     if (bestSeq[0].color === 'wild') {
                         // Pick color most present in hand
                         const counts = { red: 0, blue: 0, green: 0, yellow: 0 };
@@ -142,7 +153,7 @@ const checkBotTurn = (roomId) => {
                         console.log(`[BOT] ${player.name} playing ${bestSeq[0].value}, chose color: ${selectedColor}`);
                     }
                     room.botIsThinking = false; // RELEASE LOCK EARLY
-                    actionService.performPlaySequence(roomId, bestSeq.map(s => s.id), selectedColor, player.userId);
+                    actionService.performPlaySequence(roomId, bestSeq.map(s => s.id), selectedColor, player.userId, undefined, false, targetUserId);
                 } else {
                     if (room.pendingDrawCount > 0) {
                         console.log(`[BOT] ${player.name} forced to draw stack of ${room.pendingDrawCount}.`);
