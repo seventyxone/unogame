@@ -102,7 +102,16 @@ const checkBotTurn = (roomId) => {
                             }
                         }
                     } else {
-                        if (card.color === top.color || card.value === top.value) {
+                        let matchesNormal = card.color === top.color || card.value === top.value;
+                        if (!matchesNormal) {
+                            if (card.value.includes('Skip') && top.value.includes('Skip')) matchesNormal = true;
+                            if (card.value.includes('Reverse') && top.value.includes('Reverse')) matchesNormal = true;
+                            if (card.value.includes('Hit') && top.value.includes('Hit') &&
+                                ((card.value.includes('2') && top.value.includes('2')) ||
+                                    (card.value.includes('4') && top.value.includes('4')))) matchesNormal = true;
+                        }
+
+                        if (matchesNormal) {
                             valid = true;
                             score = 50;
                             if (card.value.includes('Skip') || card.value.includes('Reverse') || card.value.includes('Draw2') || card.value.includes('Hit')) score += 10;

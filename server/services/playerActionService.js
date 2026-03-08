@@ -547,6 +547,7 @@ const performDrawCard = (roomId, playerId) => {
 
         // If either Play After Draw is on (and playable) OR Forced Draw/Pass is on, don't advance
         if ((room.rules?.allowPlayAfterDraw && isPlayable) || room.rules?.forcedDrawPass) {
+            room.drewThisTurn = true; // FIX: Ensure this is set so AI knows it already drew!
             io.to(roomId).emit('game_update', room);
             if (player.isBot) {
                 setTimeout(() => getBotService().checkBotTurn(roomId), 1000);
