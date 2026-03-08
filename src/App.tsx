@@ -121,7 +121,7 @@ const App: React.FC = () => {
 
       if (skips.length > 0) {
         if (action.specialReverse) {
-          eventType = 'EXTRA TURN!';
+          eventType = 'FREE TURN!';
         } else {
           const names = skips.map((s: any) => s.name.split(' ')[0]);
           eventType = names.join(' & ') + ' SKIPPED';
@@ -419,6 +419,48 @@ const App: React.FC = () => {
                     onChange={(e) => updateRules({ startingHandSize: parseInt(e.target.value) })}
                   />
                 </label>
+
+                <div className="rules-section-header">DECLARATION RULES</div>
+                <label className="rule-item" title="Mandatory shout with 1 card.">
+                  <div className="rule-label-group">
+                    <span>Require UNO! Declaration</span>
+                    <small>Mandatory shout</small>
+                  </div>
+                  <input
+                    type="checkbox"
+                    disabled={gameState.hostUserId !== userId}
+                    checked={gameState.rules?.requireUnoDeclaration ?? true}
+                    onChange={(e) => updateRules({ requireUnoDeclaration: e.target.checked })}
+                  />
+                </label>
+                <label className={`rule-item ${!gameState.rules?.requireUnoDeclaration ? 'disabled' : ''}`} title="Opponents can click 'NO UNO!' to penalize you.">
+                  <div className="rule-label-group">
+                    <span>Allow 'NO UNO!' Callouts</span>
+                    <small>Opponents can catch you</small>
+                  </div>
+                  <input
+                    type="checkbox"
+                    disabled={gameState.hostUserId !== userId || !gameState.rules?.requireUnoDeclaration}
+                    checked={gameState.rules?.allowCallNoUno ?? true}
+                    onChange={(e) => updateRules({ allowCallNoUno: e.target.checked })}
+                  />
+                </label>
+
+                <div className="rules-section-header">THE WAR (STAKING)</div>
+                <label className="rule-item" title="Challenge the Attackers integrity on a Wild Draw 4.">
+                  <div className="rule-label-group">
+                    <span>Challenge Rule</span>
+                    <small>Integrity Check</small>
+                  </div>
+                  <input
+                    type="checkbox"
+                    disabled={gameState.hostUserId !== userId}
+                    checked={gameState.rules?.challengeRule ?? true}
+                    onChange={(e) => updateRules({ challengeRule: e.target.checked })}
+                  />
+                </label>
+
+                <div className="rules-section-header">HOUSE RULES</div>
                 <label className="rule-item" title="Play drawn card immediately if it matches.">
                   <div className="rule-label-group">
                     <span>Throwouts (After Draw)</span>
@@ -443,34 +485,6 @@ const App: React.FC = () => {
                     onChange={(e) => updateRules({ forcedDrawPass: e.target.checked })}
                   />
                 </label>
-
-                <div className="rules-section-header">DECLARATION RULES</div>
-                <label className="rule-item" title="Mandatory shout with 1 card.">
-                  <div className="rule-label-group">
-                    <span>Require UNO! Declaration</span>
-                    <small>Mandatory shout</small>
-                  </div>
-                  <input
-                    type="checkbox"
-                    disabled={gameState.hostUserId !== userId}
-                    checked={gameState.rules?.requireUnoDeclaration ?? true}
-                    onChange={(e) => updateRules({ requireUnoDeclaration: e.target.checked })}
-                  />
-                </label>
-                <label className="rule-item" title="Opponents can click 'NO UNO!' to penalize you.">
-                  <div className="rule-label-group">
-                    <span>Allow 'NO UNO!' Callouts</span>
-                    <small>Opponents can catch you</small>
-                  </div>
-                  <input
-                    type="checkbox"
-                    disabled={gameState.hostUserId !== userId}
-                    checked={gameState.rules?.allowCallNoUno ?? true}
-                    onChange={(e) => updateRules({ allowCallNoUno: e.target.checked })}
-                  />
-                </label>
-
-                <div className="rules-section-header">THE WAR (STAKING)</div>
                 <label className="rule-item" title="Stack +2 or +4 to pass the penalty.">
                   <div className="rule-label-group">
                     <span>Draw War (Stacking)</span>
@@ -483,7 +497,7 @@ const App: React.FC = () => {
                     onChange={(e) => updateRules({ drawWar: e.target.checked })}
                   />
                 </label>
-                <label className="rule-item" title="Stack a Wild Draw 4 on top of a +2 penalty.">
+                <label className={`rule-item ${!gameState.rules?.drawWar ? 'disabled' : ''}`} title="Stack a Wild Draw 4 on top of a +2 penalty.">
                   <div className="rule-label-group">
                     <span>Draw 4 on Draw 2</span>
                     <small>Up-scaling the war</small>
@@ -495,7 +509,7 @@ const App: React.FC = () => {
                     onChange={(e) => updateRules({ allowDraw4OnDraw2: e.target.checked })}
                   />
                 </label>
-                <label className="rule-item" title="Stack a regular +2 on top of a Wild Draw 4 penalty.">
+                <label className={`rule-item ${!gameState.rules?.drawWar ? 'disabled' : ''}`} title="Stack a regular +2 on top of a Wild Draw 4 penalty.">
                   <div className="rule-label-group">
                     <span>Draw 2 on Draw 4</span>
                     <small>Down-scaling the war</small>
@@ -521,18 +535,6 @@ const App: React.FC = () => {
                     />
                   </label>
                 )}
-                <label className="rule-item" title="Challenge the Attackers integrity on a Wild Draw 4.">
-                  <div className="rule-label-group">
-                    <span>Challenge Rule</span>
-                    <small>Integrity Check</small>
-                  </div>
-                  <input
-                    type="checkbox"
-                    disabled={gameState.hostUserId !== userId}
-                    checked={gameState.rules?.challengeRule ?? true}
-                    onChange={(e) => updateRules({ challengeRule: e.target.checked })}
-                  />
-                </label>
                 <label className="rule-item" title="Play a legal card after receiving a draw penalty.">
                   <div className="rule-label-group">
                     <span>Defensive Throwout</span>
@@ -545,8 +547,6 @@ const App: React.FC = () => {
                     onChange={(e) => updateRules({ playAfterPenalty: e.target.checked })}
                   />
                 </label>
-
-                <div className="rules-section-header">SLANG moves (house rules)</div>
                 <label className="rule-item" title="Play multiple cards of the same number/value at once.">
                   <div className="rule-label-group">
                     <span>Number Stacks</span>
@@ -561,7 +561,7 @@ const App: React.FC = () => {
                 </label>
                 <label className="rule-item" title="Extra turn for Double Reverses or 1v1 Reverses.">
                   <div className="rule-label-group">
-                    <span>Special Reverse</span>
+                    <span>Free Turn Reverse</span>
                     <small>Momentum rules</small>
                   </div>
                   <input

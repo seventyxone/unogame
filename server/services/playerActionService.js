@@ -711,7 +711,7 @@ const handleDeclareUno = (roomId, userId) => {
     const io = getIo();
     if (!room || !room.rules?.requireUnoDeclaration) return;
     const player = room.players.find(p => p.userId === userId);
-    if (!player || player.hand.length !== 1) return;
+    if (!player || player.hand.length !== 1 || player.isSpectator || room.finishedPlayers?.includes(userId)) return;
 
     player.saidUno = true;
     room.lastAction = {
@@ -731,6 +731,7 @@ const handleCallNoUno = (roomId, callingUserId) => {
     if (!room.rules?.allowCallNoUno) return;
 
     const caller = room.players.find(p => p.userId === callingUserId);
+    if (!caller || caller.isSpectator || room.finishedPlayers?.includes(callingUserId)) return;
 
     // Find players who have 1 card and haven't said UNO
     const targets = room.players.filter(p => !p.isSpectator && p.hand.length === 1 && !p.saidUno);

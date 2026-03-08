@@ -313,12 +313,26 @@ const Game: React.FC<Props> = ({
         setAnimatedHand(sorted);
     };
 
+    const isPortrait = viewportHeight > viewportWidth;
+    const isDesktop = !isPortrait && viewportWidth > 1024; // Separate logic for desktop
+    const aspectRatio = viewportWidth / Math.max(viewportHeight, 1);
+    const radiusFactor = isHandMinimized ? 0.85 : 1.0;
+
+    const arenaConfig = {
+        isPortrait,
+        aspectRatio,
+        radiusFactor,
+        orbitCenterY: isPortrait ? 40 : (isDesktop ? 34 : 62), // Moved UP on desktop (34), kept low on mobile landscape (62)
+        rX: isPortrait ? 31 : Math.min(50, 26 + (aspectRatio * 6)), // Shaved portrait width
+        rY: isPortrait ? 30 : 35,
+        boardCenterY: isPortrait ? (68 + (50 / viewportHeight) * 100) : (isDesktop ? (45 + (50 / viewportHeight) * 100) : (54 + (50 / viewportHeight) * 100)),
+        boardSafetyW: 14,
+        boardSafetyH: 12,
+        pushFactor: 1.4
+    };
+
     // Calculate circular positions for opponents with perspective scaling
     const getSeatPosition = (index: number, total: number, isActive: boolean = false) => {
-        const isPortrait = viewportHeight > viewportWidth;
-        const aspectRatio = viewportWidth / Math.max(viewportHeight, 1);
-        const radiusFactor = isHandMinimized ? 0.85 : 1.0;
-
         // 1. DYNAMIC SCALE ENGINE (Continuous Power Law)
         // Stricter decay: total=1 => 2.2x, total=7 => 1.1x, total=10 => 0.9x
         const baseScaleFactor = 0.8 + (1.4 / Math.pow(Math.max(1, total), 0.7));
@@ -337,25 +351,8 @@ const Game: React.FC<Props> = ({
         const angle = total === 1 ? (Math.PI * 1.5) : startAngle + (step * index);
 
         // 4. COORDINATE & BOUNDARY MATHEMATICS
-        // High orbit center for portrait to keep them from hitting the HUD
-        const orbitCenterY = isPortrait ? 28 : 38;
-
-        // Board location - shift lower in portrait to open up the arena center
-        const pxToVh = (px: number) => (px / viewportHeight) * 100;
-        const boardCenterY = isPortrait ? (65 + pxToVh(50)) : (40 + pxToVh(50));
-
-        // Define Protective Buffer Zones (In VH/VW %)
-        const boardSafetyW = 14;
-        const boardSafetyH = 12;
-        const pushFactor = 1.4;
-
-        // Target Radius (Initial)
-        // In portrait, we want a wider ellipse to push side players outwards
-        let rY = isPortrait ? 60 : 42;
-        let rX = isPortrait ? 45 : Math.min(50, 26 + (aspectRatio * 6));
-
-        rY *= radiusFactor;
-        rX *= radiusFactor;
+        let rY = arenaConfig.rY * radiusFactor;
+        let rX = arenaConfig.rX * radiusFactor;
 
         const sinA = Math.sin(angle);
         const cosA = Math.cos(angle);
@@ -363,7 +360,7 @@ const Game: React.FC<Props> = ({
         // --- CONSTRAINT SOLVER ---
         // A. Viewport Edge Collision Detection
         if (sinA < 0) {
-            const maxRYTop = (orbitCenterY - 6) / Math.abs(sinA); // 6% top margin
+            const maxRYTop = (arenaConfig.orbitCenterY - 6) / Math.abs(sinA); // 6% top margin
             rY = Math.min(rY, maxRYTop);
         }
         const maxRXSide = (50 - 5) / Math.abs(cosA || 1); // 5% side margin
@@ -371,24 +368,23 @@ const Game: React.FC<Props> = ({
 
         // B. Board Overlap Prevention (Iterative Repulsion)
         let seatX = 50 + rX * cosA;
-        let seatY = orbitCenterY + rY * sinA;
+        let seatY = arenaConfig.orbitCenterY + rY * sinA;
 
         const distX = Math.abs(seatX - 50);
-        const distY = Math.abs(seatY - boardCenterY);
+        const distY = Math.abs(seatY - arenaConfig.boardCenterY);
 
-        if (distX < boardSafetyW && distY < boardSafetyH) {
+        if (distX < arenaConfig.boardSafetyW && distY < arenaConfig.boardSafetyH) {
             // Push it further out to clear the board center
-            rY *= pushFactor;
-            rX *= pushFactor;
+            rY *= arenaConfig.pushFactor;
+            rX *= arenaConfig.pushFactor;
 
             // Re-apply Screen constraints after push
-            if (sinA < 0) rY = Math.min(rY, (orbitCenterY - 4) / Math.abs(sinA));
+            if (sinA < 0) rY = Math.min(rY, (arenaConfig.orbitCenterY - 4) / Math.abs(sinA));
             rX = Math.min(rX, (50 - 4) / Math.abs(cosA || 1));
         }
 
         // 5. DEPTH & RENDERING DATA (Z-Buffer management)
         const depthFactor = (sinA + 1) / 2; // 0 = Distant (Top), 1 = Foreground (Bottom)
-
         const cardScale = (0.5 + (depthFactor * 0.6)) * baseScaleFactor * crowdingScale;
         const labelScale = (0.8 + (depthFactor * 0.2)) * baseScaleFactor;
 
@@ -397,7 +393,7 @@ const Game: React.FC<Props> = ({
 
         return {
             left: `${50 + rX * cosA}%`,
-            top: `${orbitCenterY + rY * sinA}%`,
+            top: `${arenaConfig.orbitCenterY + rY * sinA}%`,
             cardScale: cardScale * (isActive ? 1.15 : 1.0),
             labelScale: labelScale * (isActive ? 1.1 : 1.0),
             zIndex
@@ -426,26 +422,28 @@ const Game: React.FC<Props> = ({
 
     return (
 
-        <div className="game-screen">
+        <div className="game-screen" >
             {/* History Toggle Button */}
-            <button className="history-toggle-btn" onClick={() => setShowHistory(!showHistory)}>
+            < button className="history-toggle-btn" onClick={() => setShowHistory(!showHistory)}>
                 {showHistory ? '✕' : '📋'}
-            </button>
+            </button >
 
 
 
             {/* Spectator Global Badge */}
             <AnimatePresence>
-                {me.isSpectator && (
-                    <motion.div
-                        className="spectator-indicator"
-                        initial={{ y: -50, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                    >
-                        SPECTATOR MODE
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                {
+                    me.isSpectator && (
+                        <motion.div
+                            className="spectator-indicator"
+                            initial={{ y: -50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                        >
+                            SPECTATOR MODE
+                        </motion.div>
+                    )
+                }
+            </AnimatePresence >
 
             <div className="arena-background">
             </div>
@@ -608,6 +606,7 @@ const Game: React.FC<Props> = ({
 
                 <div className="table-arena">
                     <div className="circular-orbit">
+                        {/* Orbit and safety zones hidden for production */}
                         {others.map((player: any, index: number) => {
                             const isFinished = gameState.finishedPlayers?.includes(player.userId);
                             const isActive = gameState.players[gameState.currentPlayerIndex].userId === player.userId;
@@ -775,6 +774,7 @@ const Game: React.FC<Props> = ({
                     )}
 
                 </div>{/* END table-arena */}
+
 
             </LayoutGroup>
 
@@ -994,7 +994,7 @@ const Game: React.FC<Props> = ({
                 )}
             </AnimatePresence>
 
-        </div>
+        </div >
     );
 };
 
