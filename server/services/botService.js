@@ -47,7 +47,20 @@ const checkBotTurn = (roomId) => {
                 }
 
                 if (room.pendingChallenge && room.pendingChallenge.victimId === player.userId) {
-                    const canStack = player.hand.some(c => (c.value === 'Draw4' || (c.value === 'Draw2' && room.rules?.allowDraw2OnDraw4)));
+                    const top = room.discardPile[room.discardPile.length - 1];
+                    const canStack = player.hand.some(c => {
+                        const isTwo = c.value.includes('Draw2') || c.value.includes('Hit2') || c.value.includes('TargetDraw2');
+                        const isFour = c.value.includes('Draw4') || c.value.includes('Hit4') || c.value.includes('TargetDraw4');
+                        const topIsFour = top.value.includes('4');
+                        if (isFour && (topIsFour || room.rules?.allowDraw4OnDraw2)) return true;
+                        if (isTwo && (!topIsFour || room.rules?.allowDraw2OnDraw4)) {
+                            if (topIsFour && room.rules?.draw2OnDraw4ColorMatch) {
+                                return c.color === top.color || c.color === 'wild';
+                            }
+                            return true;
+                        }
+                        return false;
+                    });
 
                     if (canStack && room.rules?.drawWar) {
                         console.log(`[BOT] ${player.name} accepts challenge phase to prepare for stacking.`);
@@ -56,11 +69,11 @@ const checkBotTurn = (roomId) => {
                     } else {
                         // 80% chance to accept, 20% to challenge
                         if (Math.random() < 0.2) {
-                            console.log(`[BOT] ${player.name} challenges the Draw4.`);
+                            console.log(`[BOT] ${player.name} challenges the action.`);
                             room.botIsThinking = false;
                             actionService.handleChallengeDraw4(roomId, player.userId);
                         } else {
-                            console.log(`[BOT] ${player.name} accepts the Draw4 penalty.`);
+                            console.log(`[BOT] ${player.name} accepts the penalty.`);
                             room.botIsThinking = false;
                             actionService.handleAcceptChallenge(roomId, player.userId);
                         }
@@ -114,7 +127,8 @@ const checkBotTurn = (roomId) => {
                         if (matchesNormal) {
                             valid = true;
                             score = 50;
-                            if (card.value.includes('Skip') || card.value.includes('Reverse') || card.value.includes('Draw2') || card.value.includes('Hit')) score += 10;
+                            if (card.value.includes('Skip') || card.value.includes('Reverse') || card.value.includes('Draw2') ||
+                                card.value.includes('Hit') || card.value.includes('TargetDraw') || card.value.includes('Draw4')) score += 10;
                             if (card.value.includes('DiscardAll')) {
                                 const matchedCount = player.hand.filter(c => c.color === card.color).length;
                                 score += matchedCount * 15;
@@ -131,8 +145,18 @@ const checkBotTurn = (roomId) => {
                         bestScore = score;
                         const seq = [card];
                         if (room.rules?.multiPlay) {
+                            const v1 = card.value;
                             player.hand.forEach(c => {
-                                if (c.id !== card.id && c.value === card.value) seq.push(c);
+                                if (c.id !== card.id) {
+                                    const vi = c.value;
+                                    const valuesMatch = v1 === vi ||
+                                        (v1.includes('Skip') && vi.includes('Skip')) ||
+                                        (v1.includes('Reverse') && vi.includes('Reverse')) ||
+                                        (v1.includes('Hit') && vi.includes('Hit') &&
+                                            ((v1.includes('2') && vi.includes('2')) ||
+                                                (v1.includes('4') && vi.includes('4'))));
+                                    if (valuesMatch) seq.push(c);
+                                }
                             });
                         }
                         bestSeq = seq;

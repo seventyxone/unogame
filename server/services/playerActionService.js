@@ -2,7 +2,7 @@ const { rooms, getIo } = require('../state');
 const { nextPlayerIndex, handleWin } = require('../utils/gameCore');
 
 const refillDeckIfNeeded = (room) => {
-    if (room.deck.length > 0) return;
+    if (room.deck.length > 5) return; // Pad to prevent excessive shuffling
     if (room.discardPile.length <= 1) return; // Cannot refill if nothing to shuffle
 
     const top = room.discardPile.pop();
@@ -47,6 +47,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         const missedUnos = room.players.filter(p => !p.isSpectator && p.userId !== player.userId && p.hand.length === 1 && !p.saidUno);
         if (missedUnos.length > 0) {
             missedUnos.forEach(target => {
+                refillDeckIfNeeded(room);
                 const penalty = room.deck.splice(0, 2);
                 target.hand.push(...penalty);
                 target.saidUno = false;
@@ -525,6 +526,7 @@ const performDrawCard = (roomId, playerId) => {
             console.error("[SERVER ERROR] Deck empty after refill attempt.");
             room.currentPlayerIndex = nextPlayerIndex(room);
             io.to(roomId).emit('game_update', room);
+            getBotService().checkBotTurn(roomId); // FIX: Ensure next player (if bot) is triggered
             return;
         }
         player.hand.push(drawnCard);
