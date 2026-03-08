@@ -385,6 +385,7 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
             const drawn = room.deck.splice(0, room.pendingDrawCount);
             const targetPlayer = room.players[room.currentPlayerIndex];
             targetPlayer.hand.push(...drawn);
+            if (targetPlayer.hand.length > 1) targetPlayer.saidUno = false;
 
             // Log the forced draw in play history
             const drawAction = {
@@ -503,6 +504,7 @@ const performDrawCard = (roomId, playerId) => {
         }
         const drawn = room.deck.splice(0, room.pendingDrawCount);
         player.hand.push(...drawn);
+        if (player.hand.length > 1) player.saidUno = false;
         const action = {
             type: 'draw',
             userId: player.userId,
@@ -530,6 +532,7 @@ const performDrawCard = (roomId, playerId) => {
             return;
         }
         player.hand.push(drawnCard);
+        if (player.hand.length > 1) player.saidUno = false;
         const action = {
             id: Date.now(),
             type: 'draw',
@@ -601,6 +604,7 @@ const handleAcceptChallenge = (roomId, userId) => {
     }
     const drawn = room.deck.splice(0, 4);
     targetPlayer.hand.push(...drawn);
+    if (targetPlayer.hand.length > 1) targetPlayer.saidUno = false;
 
     room.lastAction = {
         id: Date.now(),
@@ -656,6 +660,7 @@ const handleChallengeDraw4 = (roomId, userId) => {
     }
     const drawn = room.deck.splice(0, cardCount);
     penaltyUser.hand.push(...drawn);
+    if (penaltyUser.hand.length > 1) penaltyUser.saidUno = false;
 
     room.lastAction = {
         id: Date.now(),

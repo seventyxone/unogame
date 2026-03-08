@@ -350,16 +350,17 @@ const Game: React.FC<Props> = ({
 
         if (total === 1) {
             arcSpread = 0;
-            dynamicRadiusY = 55; // Pull it slightly down to be larger
-            baseScaleFactor = 1.35; // Buff size significantly for 1v1
+            // Pull them DOWN from the top edge (smaller radiusY pushes them towards centerY)
+            dynamicRadiusY = 8;
+            baseScaleFactor = 2.2; // Massive for 1v1
         } else if (total === 2) {
             arcSpread = 80;
-            dynamicRadiusY = 50;
-            baseScaleFactor = 1.25;
+            dynamicRadiusY = 30;
+            baseScaleFactor = 1.35;
         } else if (total === 3) {
             arcSpread = 140;
-            dynamicRadiusY = 48;
-            baseScaleFactor = 1.15;
+            dynamicRadiusY = 40;
+            baseScaleFactor = 1.25;
         } else {
             arcSpread = Math.min(260, 140 + (total * 15));
             dynamicRadiusY = isPortrait ? (total > 5 ? 50 : 60) : (total > 5 ? 40 : 45);
