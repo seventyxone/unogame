@@ -191,12 +191,21 @@ const Game: React.FC<Props> = ({
     const hasUnoToSay = gameState.rules?.requireUnoDeclaration && me?.hand?.length === 1 && !me?.saidUno;
     const canCallNoUno = gameState.rules?.allowCallNoUno && others.some((p: any) => p.hand.length === 1 && !p.saidUno);
 
-    // Auto-minimize hand logic
+    // Auto-minimize hand logic & Auto UNO trigger
     useEffect(() => {
         if (hasUnoToSay || canCallNoUno) {
-            // Force show if there's an active UNO situation to address
-            setIsHandMinimized(false);
-            return;
+            // If Auto UNO is active, just shout it immediately
+            if (autoUnoActive && hasUnoToSay) {
+                onDeclareUno?.();
+                // We don't return here so the hand doesn't stay forced visible unnecessarily long,
+                // but we let it fall through in case canCallNoUno is true
+            }
+
+            if (!autoUnoActive || canCallNoUno) {
+                // Force show if there's an active UNO situation to address manually
+                setIsHandMinimized(false);
+                return;
+            }
         }
 
         if (isMyTurn) {
@@ -206,7 +215,7 @@ const Game: React.FC<Props> = ({
                 setIsHandMinimized(true);
             }
         }
-    }, [isMyTurn, autoHidePreference, hasUnoToSay, canCallNoUno]);
+    }, [isMyTurn, autoHidePreference, hasUnoToSay, canCallNoUno, autoUnoActive, onDeclareUno]);
 
     const handleToggleHand = () => {
         const nextState = !isHandMinimized;
