@@ -176,11 +176,18 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         if (card.value === 'Reverse' || card.value === 'WildReverse') revCount++;
         if (card.value === 'Skip' || card.value === 'WildSkip') skipCount++;
 
-        if (card.value.includes('Draw2')) totalDraw += 2;
-        if (card.value.includes('Draw4')) totalDraw += 4;
-
-        if (card.value.includes('Hit2')) hitAllValue += 2;
-        if (card.value.includes('Hit4')) hitAllValue += 4;
+        if (card.value.includes('TargetDraw')) {
+            const amount = card.value.includes('4') ? 4 : 2;
+            targetDrawValue += amount;
+        } else if (card.value.includes('Hit2')) {
+            hitAllValue += 2;
+        } else if (card.value.includes('Hit4')) {
+            hitAllValue += 4;
+        } else if (card.value.includes('Draw2')) {
+            totalDraw += 2;
+        } else if (card.value.includes('Draw4')) {
+            totalDraw += 4;
+        }
 
         if (card.value.includes('DiscardAll')) {
             const targetColor = card.color;
@@ -210,12 +217,6 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         // Push main card last for DiscardAll batches to ensure it's on top
         if (card.value.includes('DiscardAll')) {
             discardAllBatch.forEach(c => room.discardPile.push(c));
-        }
-
-        // Targeted Draw Logic
-        if (card.value.includes('TargetDraw')) {
-            const amount = card.value.includes('4') ? 4 : 2;
-            targetDrawValue += amount;
         }
 
         room.discardPile.push(card);
