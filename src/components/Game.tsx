@@ -55,19 +55,26 @@ const MiniHand: React.FC<{ hand: any[], active?: boolean }> = ({ hand, active })
 };
 
 const LiveScoreboard: React.FC<{ gameState: any }> = ({ gameState }) => {
+    const [isMinimized, setIsMinimized] = useState(false);
+
     if (gameState.rules?.gameMode !== 'points' || !gameState.scores) return null;
 
     return (
-        <div className="live-scoreboard-container">
-            <div className="scoreboard-header">POINTS MODE // LEADERBOARD</div>
-            <div className="scoreboard-list">
-                {gameState.players.map((p: any) => (
-                    <div key={p.userId} className={`scoreboard-row ${gameState.scores[p.userId] >= (gameState.rules.maxRounds || 3) ? 'near-win' : ''}`}>
-                        <span className="p-name">{p.name}</span>
-                        <span className="p-score">{gameState.scores[p.userId] || 0} / {gameState.rules.maxRounds || 3}</span>
-                    </div>
-                ))}
+        <div className={`live-scoreboard-container ${isMinimized ? 'minimized' : ''}`}>
+            <div className="scoreboard-header" onClick={() => setIsMinimized(!isMinimized)}>
+                <span>POINTS MODE // LEADERBOARD</span>
+                <button className="scoreboard-toggle-btn">{isMinimized ? '+' : '−'}</button>
             </div>
+            {!isMinimized && (
+                <div className="scoreboard-list">
+                    {gameState.players.map((p: any) => (
+                        <div key={p.userId} className={`scoreboard-row ${gameState.scores[p.userId] >= (gameState.rules.maxRounds || 3) ? 'near-win' : ''}`}>
+                            <span className="p-name">{p.name}</span>
+                            <span className="p-score">{gameState.scores[p.userId] || 0} / {gameState.rules.maxRounds || 3}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

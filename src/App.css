@@ -3037,8 +3037,14 @@ body,
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
-  pointer-events: none;
-  /* Let clicks pass through to arena */
+  pointer-events: auto;
+  /* Allow interactions for minimize and dragging */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.live-scoreboard-container.minimized {
+  min-width: unset;
+  padding: 0.75rem 1rem;
 }
 
 .scoreboard-header {
@@ -3050,6 +3056,38 @@ body,
   text-transform: uppercase;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.live-scoreboard-container.minimized .scoreboard-header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.scoreboard-toggle-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 1rem;
+  transition: color 0.2s;
+  pointer-events: none;
+  /* Let parent click handle it */
+}
+
+.scoreboard-header:hover {
+  filter: brightness(1.2);
+}
+
+.scoreboard-header:hover .scoreboard-toggle-btn {
+  color: #fbbf24;
 }
 
 .scoreboard-list {
