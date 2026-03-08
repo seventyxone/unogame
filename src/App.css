@@ -2022,7 +2022,6 @@ input:disabled {
 .deck-pile {
   perspective: 1000px;
   transform-style: preserve-3d;
-  border: 3px dashed #00ffff !important;
 }
 
 .deck-3d-stack {
@@ -2085,7 +2084,6 @@ input:disabled {
   display: flex;
   justify-content: center;
   align-items: center;
-  border: 3px dashed #ff00ff !important;
 }
 
 .discarded-card-physical {

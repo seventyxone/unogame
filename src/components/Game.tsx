@@ -613,30 +613,60 @@ const Game: React.FC<Props> = ({
                             const pos = getSeatPosition(index, others.length, isActive);
 
                             return (
-                                <div
-                                    key={player.userId}
-                                    className={`table-seat ${isActive ? 'active' : ''}`}
-                                    style={{
-                                        left: pos.left,
-                                        top: pos.top,
-                                        transform: `translate(-50%, -50%)`, // Centering
-                                        zIndex: pos.zIndex
-                                    }}
-                                >
-                                    <div className="billboard">
-                                        <div className="scaling-carrier" style={{ transform: `scale(${pos.cardScale})`, transformOrigin: 'bottom center' }}>
-                                            {!isFinished && <MiniHand hand={player.hand} active={isActive} />}
-                                        </div>
-                                        <div className="opponent-tag isometric" style={{ transform: `scale(${pos.labelScale})` }}>
-                                            <div className="tag-inner">{player.name}</div>
-                                            {gameState.rules?.gameMode === 'points' && gameState.scores && (
-                                                <div className={`score-badge animate-in ${gameState.scores[player.userId] >= (gameState.rules.maxRounds || 3) - 1 ? 'near-win' : ''}`}>
-                                                    {gameState.scores[player.userId] || 0}
-                                                </div>
-                                            )}
+                                <React.Fragment key={player.userId}>
+                                    {/* --- 3D CARDS LAYER (Sorted by Depth) --- */}
+                                    <div
+                                        className={`table-seat ${isActive ? 'active' : ''}`}
+                                        style={{
+                                            left: pos.left,
+                                            top: pos.top,
+                                            transform: `translate(-50%, -50%)`, // Centering
+                                            zIndex: pos.zIndex
+                                        }}
+                                    >
+                                        <div className="billboard">
+                                            <div className="scaling-carrier" style={{ transform: `scale(${pos.cardScale})`, transformOrigin: 'bottom center' }}>
+                                                {!isFinished && <MiniHand hand={player.hand} active={isActive} />}
+                                            </div>
+                                            {/* Ghost tag to maintain identical structural height anchor */}
+                                            <div className="opponent-tag isometric" style={{ transform: `scale(${pos.labelScale})`, visibility: 'hidden' }}>
+                                                <div className="tag-inner">{player.name}</div>
+                                                {gameState.rules?.gameMode === 'points' && gameState.scores && (
+                                                    <div className="score-badge">
+                                                        {gameState.scores[player.userId] || 0}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+
+                                    {/* --- 2D TAGS LAYER (Globally Elevated over all cards) --- */}
+                                    <div
+                                        className={`table-seat ${isActive ? 'active-tag' : ''}`}
+                                        style={{
+                                            left: pos.left,
+                                            top: pos.top,
+                                            transform: `translate(-50%, -50%)`,
+                                            zIndex: 100000, // Forces tag entirely above every player's card layer
+                                            pointerEvents: 'none'
+                                        }}
+                                    >
+                                        <div className="billboard">
+                                            {/* Ghost hand to maintain identical structural height anchor */}
+                                            <div className="scaling-carrier" style={{ transform: `scale(${pos.cardScale})`, transformOrigin: 'bottom center', visibility: 'hidden' }}>
+                                                {!isFinished && <div style={{ height: '75px', width: '10px' }} />}
+                                            </div>
+                                            <div className="opponent-tag isometric" style={{ transform: `scale(${pos.labelScale})`, pointerEvents: 'auto' }}>
+                                                <div className="tag-inner">{player.name}</div>
+                                                {gameState.rules?.gameMode === 'points' && gameState.scores && (
+                                                    <div className={`score-badge animate-in ${gameState.scores[player.userId] >= (gameState.rules.maxRounds || 3) - 1 ? 'near-win' : ''}`}>
+                                                        {gameState.scores[player.userId] || 0}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </React.Fragment>
                             );
                         })}
                     </div>
