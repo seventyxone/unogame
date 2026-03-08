@@ -115,6 +115,9 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
         if (!canPlayFirst) {
             if (cards[0].value.includes('Skip') && topCard.value.includes('Skip')) canPlayFirst = true;
             if (cards[0].value.includes('Reverse') && topCard.value.includes('Reverse')) canPlayFirst = true;
+            if (cards[0].value.includes('Hit') && topCard.value.includes('Hit') &&
+                ((cards[0].value.includes('2') && topCard.value.includes('2')) ||
+                    (cards[0].value.includes('4') && topCard.value.includes('4')))) canPlayFirst = true;
         }
     }
 
@@ -135,7 +138,10 @@ const performPlaySequence = (roomId, cardIds, newColor, playerId, socketId, isUn
             const vi = cards[i].value;
             const valuesMatch = v1 === vi ||
                 (v1.includes('Skip') && vi.includes('Skip')) ||
-                (v1.includes('Reverse') && vi.includes('Reverse'));
+                (v1.includes('Reverse') && vi.includes('Reverse')) ||
+                (v1.includes('Hit') && vi.includes('Hit') &&
+                    ((v1.includes('2') && vi.includes('2')) ||
+                        (v1.includes('4') && vi.includes('4'))));
 
             if (!valuesMatch) {
                 if (socketId) io.to(socketId).emit('error', 'Multi-played cards must be a compatible value!');

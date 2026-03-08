@@ -217,6 +217,9 @@ const Game: React.FC<Props> = ({
         // Stacking logic for variations
         if (card.value.includes('Skip') && topCard.value.includes('Skip')) return true;
         if (card.value.includes('Reverse') && topCard.value.includes('Reverse')) return true;
+        if (card.value.includes('Hit') && topCard.value.includes('Hit') &&
+            ((card.value.includes('2') && topCard.value.includes('2')) ||
+                (card.value.includes('4') && topCard.value.includes('4')))) return true;
         return false;
     };
 
